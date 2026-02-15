@@ -5,7 +5,7 @@ A dedicated migration tool for ClickHouse, supporting Cluster and ReplicatedMerg
 ## Installation
 
 ```bash
-go install github.com/siwakorn-r/clickhouse-migrator/cmd/clickhouse-migrator@latest
+go install github.com/arsura/clickhouse-migrator/cmd/clickhouse-migrator@latest
 ```
 
 ## Usage

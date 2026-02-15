@@ -9,7 +9,7 @@ import (
 	"strconv"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/siwakorn-r/clickhouse-migrator/pkg/migrator"
+	"github.com/arsura/clickhouse-migrator/pkg/migrator"
 )
 
 var (

@@ -1,4 +1,4 @@
-module github.com/siwakorn-r/clickhouse-migrator
+module github.com/arsura/clickhouse-migrator
 
 go 1.25.1
 
