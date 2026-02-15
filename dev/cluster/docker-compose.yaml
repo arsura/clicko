@@ -1,0 +1,107 @@
+# For local test on shard cluster
+
+services:
+  ch-keeper1:
+    image: harbor.linecorp.com/lineman-infra/clickhouse/clickhouse-keeper:25.9.2.1
+    container_name: ch-keeper1
+    hostname: ch-keeper1
+    ports:
+      - "29181:9181"
+    volumes:
+      - ./keeper/keeper1/keeper_config.xml:/etc/clickhouse-keeper/keeper_config.xml:ro
+
+    healthcheck:
+      test: [ "CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9181 && echo ruok >&3 && head -c 4 <&3 | grep -q imok" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+
+  ch-1-1:
+    image: harbor.linecorp.com/lineman-infra/clickhouse/clickhouse-server:25.9.2.1
+    container_name: ch-1-1
+    hostname: ch-1-1
+    depends_on:
+      - ch-keeper1
+    ports:
+      - "29000:9000"   # TCP native
+      - "28123:8123"   # HTTP
+    volumes:
+      - ./clickhouse/shard1_replica1/config.d/cluster.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
+      - ./clickhouse/shard1_replica1/config.d/keeper.xml:/etc/clickhouse-server/config.d/keeper.xml:ro
+      - ./clickhouse/shard1_replica1/config.d/macros.xml:/etc/clickhouse-server/config.d/macros.xml:ro
+      - ./clickhouse/shard1_replica1/users.d/defaults.xml:/etc/clickhouse-server/users.d/defaults.xml:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "clickhouse-client --host 127.0.0.1 --port 9000 -q 'SELECT 1' >/dev/null 2>&1" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+  ch-1-2:
+    image: harbor.linecorp.com/lineman-infra/clickhouse/clickhouse-server:25.9.2.1
+    container_name: ch-1-2
+    hostname: ch-1-2
+    depends_on:
+      - ch-keeper1
+    ports:
+      - "29001:9000"   # TCP native
+      - "28124:8123"   # HTTP
+    volumes:
+      - ./clickhouse/shard1_replica2/config.d/cluster.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
+      - ./clickhouse/shard1_replica2/config.d/keeper.xml:/etc/clickhouse-server/config.d/keeper.xml:ro
+      - ./clickhouse/shard1_replica2/config.d/macros.xml:/etc/clickhouse-server/config.d/macros.xml:ro
+      - ./clickhouse/shard1_replica2/users.d/defaults.xml:/etc/clickhouse-server/users.d/defaults.xml:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "clickhouse-client --host 127.0.0.1 --port 9000 -q 'SELECT 1' >/dev/null 2>&1" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+  ch-2-1:
+    image: harbor.linecorp.com/lineman-infra/clickhouse/clickhouse-server:25.9.2.1
+    container_name: ch-2-1
+    hostname: ch-2-1
+    depends_on:
+      - ch-keeper1
+    ports:
+      - "29002:9000"   # TCP native
+      - "28125:8123"   # HTTP
+    volumes:
+      - ./clickhouse/shard2_replica1/config.d/cluster.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
+      - ./clickhouse/shard2_replica1/config.d/keeper.xml:/etc/clickhouse-server/config.d/keeper.xml:ro
+      - ./clickhouse/shard2_replica1/config.d/macros.xml:/etc/clickhouse-server/config.d/macros.xml:ro
+      - ./clickhouse/shard2_replica1/users.d/defaults.xml:/etc/clickhouse-server/users.d/defaults.xml:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "clickhouse-client --host 127.0.0.1 --port 9000 -q 'SELECT 1' >/dev/null 2>&1" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+  ch-2-2:
+    image: harbor.linecorp.com/lineman-infra/clickhouse/clickhouse-server:25.9.2.1
+    container_name: ch-2-2
+    hostname: ch-2-2
+    depends_on:
+      - ch-keeper1
+    ports:
+      - "29003:9000"   # TCP native
+      - "28126:8123"   # HTTP
+    volumes:
+      - ./clickhouse/shard2_replica2/config.d/cluster.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
+      - ./clickhouse/shard2_replica2/config.d/keeper.xml:/etc/clickhouse-server/config.d/keeper.xml:ro
+      - ./clickhouse/shard2_replica2/config.d/macros.xml:/etc/clickhouse-server/config.d/macros.xml:ro
+      - ./clickhouse/shard2_replica2/users.d/defaults.xml:/etc/clickhouse-server/users.d/defaults.xml:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "clickhouse-client --host 127.0.0.1 --port 9000 -q 'SELECT 1' >/dev/null 2>&1" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+
+
+

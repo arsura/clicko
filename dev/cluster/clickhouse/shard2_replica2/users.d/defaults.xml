@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<clickhouse>
+  <profiles>
+    <default>
+      <log_queries>1</log_queries>
+      <load_balancing>in_order</load_balancing>
+      <max_memory_usage>8000000000</max_memory_usage>
+    </default>
+  </profiles>
+  <users>
+    <default>
+      <profile>default</profile>
+      <networks>
+        <ip>::/0</ip>
+      </networks>
+      <quota>default</quota>
+    </default>
+    <test_user>
+      <profile>default</profile>
+      <password>test_password</password>
+      <networks>
+        <ip>::/0</ip>
+      </networks>
+      <quota>default</quota>
+    </test_user>
+  </users>
+  <quotas>
+    <default>
+      <interval>
+        <duration>3600</duration>
+        <queries>0</queries>
+        <errors>0</errors>
+        <result_rows>0</result_rows>
+        <read_rows>0</read_rows>
+        <execution_time>0</execution_time>
+      </interval>
+    </default>
+  </quotas>
+</clickhouse>
+
+
+

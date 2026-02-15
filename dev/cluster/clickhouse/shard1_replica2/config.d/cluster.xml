@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<clickhouse>
+  <remote_servers>
+    <dev>
+      <shard>
+        <internal_replication>true</internal_replication>
+        <replica>
+          <host>ch-1-1</host>
+          <port>9000</port>
+        </replica>
+        <replica>
+          <host>ch-1-2</host>
+          <port>9000</port>
+        </replica>
+      </shard>
+      <shard>
+        <internal_replication>true</internal_replication>
+        <replica>
+          <host>ch-2-1</host>
+          <port>9000</port>
+        </replica>
+        <replica>
+          <host>ch-2-2</host>
+          <port>9000</port>
+        </replica>
+      </shard>
+    </dev>
+    <all-replicated>
+      <shard>
+        <internal_replication>true</internal_replication>
+        <replica>
+          <host>ch-1-1</host>
+          <port>9000</port>
+        </replica>
+        <replica>
+          <host>ch-1-2</host>
+          <port>9000</port>
+        </replica>
+        <replica>
+          <host>ch-2-1</host>
+          <port>9000</port>
+        </replica>
+        <replica>
+          <host>ch-2-2</host>
+          <port>9000</port>
+        </replica>
+      </shard>
+    </all-replicated>
+  </remote_servers>
+  <distributed_ddl>
+    <path>/clickhouse/task_queue/ddl</path>
+  </distributed_ddl>
+</clickhouse>
+
+
+

@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<clickhouse>
+  <macros>
+    <cluster>dev</cluster>
+    <shard>2</shard>
+    <replica>ch-2-2</replica>
+  </macros>
+</clickhouse>
+
+
+

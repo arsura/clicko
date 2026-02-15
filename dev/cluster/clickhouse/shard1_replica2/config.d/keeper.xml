@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<clickhouse>
+  <zookeeper>
+    <node>
+      <host>ch-keeper1</host>
+      <port>9181</port>
+    </node>
+  </zookeeper>
+</clickhouse>
+
+
+
