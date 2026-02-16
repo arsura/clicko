@@ -2,140 +2,108 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
-	"strconv"
+
+	"github.com/alecthomas/kong"
 
 	"github.com/arsura/clickhouse-migrator/internal/clickhouse"
 	"github.com/arsura/clickhouse-migrator/pkg/migrator"
 )
 
-var (
-	flags        = flag.NewFlagSet("clickhouse-migrator", flag.ExitOnError)
-	dir          = flags.String("dir", "migrations", "directory with migration files")
-	uri          = flags.String("uri", "", "ClickHouse URI (e.g. clickhouse://user:pass@host:9000/db)")
-	table        = flags.String("table", migrator.DefaultTableName, "migrations table name")
-	cluster      = flags.String("cluster", "", "ClickHouse cluster name (enables ON CLUSTER)")
-	customEngine = flags.String("engine", "", "custom table engine (overrides default MergeTree)")
-	insertQuorum = flags.String("insert-quorum", "", "insert quorum for cluster writes")
-	help         = flags.Bool("help", false, "print help")
-)
+type CLI struct {
+	URI          string `help:"ClickHouse URI (e.g. clickhouse://user:pass@host:9000/db)" required:"" name:"uri"`
+	Dir          string `help:"Directory with migration files." default:"migrations" name:"dir"`
+	Table        string `help:"Migrations table name." default:"migration_versions" name:"table"`
+	Cluster      string `help:"ClickHouse cluster name (enables ON CLUSTER)." name:"cluster"`
+	Engine       string `help:"Custom table engine (overrides default MergeTree)." name:"engine"`
+	InsertQuorum string `help:"Insert quorum for cluster writes." name:"insert-quorum"`
 
-func main() {
-	flags.Usage = usage
-	flags.Parse(os.Args[1:])
+	Up     UpCmd     `cmd:"" help:"Apply all pending migrations."`
+	UpTo   UpToCmd   `cmd:"up-to" help:"Apply migrations up to a specific version."`
+	Down   DownCmd   `cmd:"" help:"Rollback the last applied migration."`
+	DownTo DownToCmd `cmd:"down-to" help:"Rollback migrations down to a specific version."`
+	Reset  ResetCmd  `cmd:"" help:"Rollback all applied migrations."`
+	Status StatusCmd `cmd:"" help:"Show migration status."`
+}
 
-	if *help {
-		flags.Usage()
-		return
-	}
+type UpCmd struct{}
+type UpToCmd struct {
+	Version uint64 `arg:"" required:"" help:"Target version."`
+}
+type DownCmd struct{}
+type DownToCmd struct {
+	Version uint64 `arg:"" required:"" help:"Target version."`
+}
+type ResetCmd struct{}
+type StatusCmd struct{}
 
-	args := flags.Args()
-	if len(args) < 1 {
-		flags.Usage()
-		os.Exit(1)
-	}
+func (c *UpCmd) Run(globals *CLI) error {
+	return run(globals, func(ctx context.Context, m *migrator.Migrator) error {
+		return m.Up(ctx)
+	})
+}
 
-	cmd := parseCommandArgs(args)
-	validateFlags()
+func (c *UpToCmd) Run(globals *CLI) error {
+	return run(globals, func(ctx context.Context, m *migrator.Migrator) error {
+		return m.UpTo(ctx, c.Version)
+	})
+}
 
+func (c *DownCmd) Run(globals *CLI) error {
+	return run(globals, func(ctx context.Context, m *migrator.Migrator) error {
+		return m.Down(ctx)
+	})
+}
+
+func (c *DownToCmd) Run(globals *CLI) error {
+	return run(globals, func(ctx context.Context, m *migrator.Migrator) error {
+		return m.DownTo(ctx, c.Version)
+	})
+}
+
+func (c *ResetCmd) Run(globals *CLI) error {
+	return run(globals, func(ctx context.Context, m *migrator.Migrator) error {
+		return m.Reset(ctx)
+	})
+}
+
+func (c *StatusCmd) Run(globals *CLI) error {
+	return run(globals, func(ctx context.Context, m *migrator.Migrator) error {
+		return m.Status(ctx)
+	})
+}
+
+func run(globals *CLI, fn func(context.Context, *migrator.Migrator) error) error {
 	ctx := context.Background()
 
-	conn, cleanup, err := clickhouse.Dial(ctx, *uri)
+	conn, cleanup, err := clickhouse.Dial(ctx, globals.URI)
 	if err != nil {
-		exitf("failed to connect to ClickHouse: %v", err)
+		return fmt.Errorf("failed to connect to ClickHouse: %w", err)
 	}
 	defer cleanup()
 
-	loader := migrator.NewFileLoader(*dir)
+	loader := migrator.NewFileLoader(globals.Dir)
 	store, err := migrator.NewStore(conn, migrator.StoreConfig{
-		TableName:    *table,
-		Cluster:      *cluster,
-		CustomEngine: *customEngine,
-		InsertQuorum: *insertQuorum,
+		TableName:    globals.Table,
+		Cluster:      globals.Cluster,
+		CustomEngine: globals.Engine,
+		InsertQuorum: globals.InsertQuorum,
 	})
 	if err != nil {
-		exitf("invalid store config: %v", err)
+		return fmt.Errorf("invalid store config: %w", err)
 	}
+
 	m := migrator.NewMigrator(conn, loader, store)
+	return fn(ctx, m)
+}
 
-	switch cmd.command {
-	case migrator.MigrationDirectionUp:
-		if err := m.Up(ctx); err != nil {
-			exitf("up failed: %v", err)
-		}
-	case migrator.MigrationDirectionUpTo:
-		if err := m.UpTo(ctx, cmd.version); err != nil {
-			exitf("up-to failed: %v", err)
-		}
-	case migrator.MigrationDirectionDown:
-		if err := m.Down(ctx); err != nil {
-			exitf("down failed: %v", err)
-		}
-	case migrator.MigrationDirectionDownTo:
-		if err := m.DownTo(ctx, cmd.version); err != nil {
-			exitf("down-to failed: %v", err)
-		}
-	case migrator.MigrationDirectionReset:
-		if err := m.Reset(ctx); err != nil {
-			exitf("reset failed: %v", err)
-		}
+func main() {
+	var cli CLI
+	ctx := kong.Parse(&cli, kong.UsageOnError())
+	err := ctx.Run(&cli)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
-}
-
-type commandArgs struct {
-	command string
-	version uint64
-}
-
-// parseCommandArgs validates the command name and parses any required
-// positional arguments (e.g. VERSION for up-to / down-to).
-func parseCommandArgs(args []string) commandArgs {
-	command := args[0]
-
-	switch command {
-	case migrator.MigrationDirectionUp, migrator.MigrationDirectionDown, migrator.MigrationDirectionReset:
-		return commandArgs{command: command}
-
-	case migrator.MigrationDirectionUpTo, migrator.MigrationDirectionDownTo:
-		if len(args) < 2 {
-			exitf("version is required")
-		}
-		ver, err := strconv.ParseUint(args[1], 10, 64)
-		if err != nil {
-			exitf("version must be a positive number")
-		}
-		return commandArgs{command: command, version: ver}
-
-	default:
-		exitf("unknown command: %s", command)
-		return commandArgs{}
-	}
-}
-
-func validateFlags() {
-	if *uri == "" {
-		exitf("uri is required")
-	}
-}
-
-func exitf(format string, args ...any) {
-	fmt.Printf(format+"\n", args...)
-	flags.Usage()
-	os.Exit(1)
-}
-
-func usage() {
-	fmt.Println(`Usage: clickhouse-migrator [OPTIONS] COMMAND
-
-Commands:
-    up                  Apply all pending migrations
-    up-to <version>     Apply migrations up to a specific version
-    down                Rollback the last applied migration
-    down-to <version>   Rollback migrations down to a specific version
-    reset               Rollback all applied migrations
-
-Options:`)
-	flags.PrintDefaults()
 }

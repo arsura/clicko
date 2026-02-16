@@ -4,6 +4,7 @@ go 1.25.1
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.42.0
+	github.com/alecthomas/kong v1.14.0
 	github.com/stretchr/testify v1.11.1
 )
 

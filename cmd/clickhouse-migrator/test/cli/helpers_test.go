@@ -21,33 +21,74 @@ const (
 	customEngine     = "ReplicatedMergeTree('/clickhouse/all-replicated/tables/all/{database}/{table}', '{replica}')"
 	insertQuorum     = "4"
 	tableName        = "migration_versions"
-
-	usageText = `Usage: clickhouse-migrator [OPTIONS] COMMAND
-
-Commands:
-    up                  Apply all pending migrations
-    up-to <version>     Apply migrations up to a specific version
-    down                Rollback the last applied migration
-    down-to <version>   Rollback migrations down to a specific version
-    reset               Rollback all applied migrations
-
-Options:
-  -cluster string
-    	ClickHouse cluster name (enables ON CLUSTER)
-  -dir string
-    	directory with migration files (default "migrations")
-  -engine string
-    	custom table engine (overrides default MergeTree)
-  -help
-    	print help
-  -insert-quorum string
-    	insert quorum for cluster writes
-  -table string
-    	migrations table name (default "migration_versions")
-  -uri string
-    	ClickHouse URI (e.g. clickhouse://user:pass@host:9000/db)
-`
 )
+
+// flagsUsage is the shared flags section that appears in every usage context.
+const flagsUsage = `Flags:
+  -h, --help                    Show context-sensitive help.
+      --uri=STRING              ClickHouse URI (e.g.
+                                clickhouse://user:pass@host:9000/db)
+      --dir="migrations"        Directory with migration files.
+      --table="migration_versions"
+                                Migrations table name.
+      --cluster=STRING          ClickHouse cluster name (enables ON CLUSTER).
+      --engine=STRING           Custom table engine (overrides default
+                                MergeTree).
+      --insert-quorum=STRING    Insert quorum for cluster writes.
+`
+
+// globalUsage is the full help text shown when no command is given or an unknown command is used.
+const globalUsage = `Usage: clickhouse-migrator --uri=STRING <command> [flags]
+
+` + flagsUsage + `
+Commands:
+  up --uri=STRING [flags]
+    Apply all pending migrations.
+
+  up-to --uri=STRING <version> [flags]
+    Apply migrations up to a specific version.
+
+  down --uri=STRING [flags]
+    Rollback the last applied migration.
+
+  down-to --uri=STRING <version> [flags]
+    Rollback migrations down to a specific version.
+
+  reset --uri=STRING [flags]
+    Rollback all applied migrations.
+
+  status --uri=STRING [flags]
+    Show migration status.
+
+Run "clickhouse-migrator <command> --help" for more information on a command.
+`
+
+// upCmdUsage is the help text shown for the "up" command.
+const upCmdUsage = `Usage: clickhouse-migrator up --uri=STRING [flags]
+
+Apply all pending migrations.
+
+` + flagsUsage
+
+// upToCmdUsage is the help text shown for the "up-to" command.
+const upToCmdUsage = `Usage: clickhouse-migrator up-to --uri=STRING <version> [flags]
+
+Apply migrations up to a specific version.
+
+Arguments:
+  <version>    Target version.
+
+` + flagsUsage
+
+// downToCmdUsage is the help text shown for the "down-to" command.
+const downToCmdUsage = `Usage: clickhouse-migrator down-to --uri=STRING <version> [flags]
+
+Rollback migrations down to a specific version.
+
+Arguments:
+  <version>    Target version.
+
+` + flagsUsage
 
 // testDir returns the absolute path of the directory containing this test file.
 func testDir() string {
@@ -89,16 +130,16 @@ func runCLI(binaryPath string, args ...string) (string, error) {
 	return string(out), err
 }
 
-// cliArgs returns the common flags for cluster mode with the given command appended.
+// cliArgs returns the common flags for cluster mode with the given command prepended.
 func cliArgs(migrationsDir string, command ...string) []string {
-	args := []string{
+	args := append(command,
 		"--uri", testURI,
 		"--dir", migrationsDir,
 		"--cluster", migrationCluster,
 		"--insert-quorum", insertQuorum,
 		"--engine", customEngine,
-	}
-	return append(args, command...)
+	)
+	return args
 }
 
 // appliedMigration represents a row from the migration tracking table.
@@ -143,8 +184,9 @@ func assertAppliedMigrations(t *testing.T, actual []appliedMigration, expected [
 }
 
 var (
-	logTimestampRe = regexp.MustCompile(`\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} `)
-	okDurationRe   = regexp.MustCompile(`OK \([^)]+\)`)
+	logTimestampRe    = regexp.MustCompile(`\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} `)
+	okDurationRe      = regexp.MustCompile(`OK \([^)]+\)`)
+	statusTimestampRe = regexp.MustCompile(`\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}`)
 )
 
 // normalizeOutput strips log timestamp prefixes and replaces "OK (<duration>)"
@@ -152,5 +194,6 @@ var (
 func normalizeOutput(s string) string {
 	s = logTimestampRe.ReplaceAllString(s, "")
 	s = okDurationRe.ReplaceAllString(s, "OK")
+	s = statusTimestampRe.ReplaceAllString(s, "APPLIED_AT         ")
 	return s
 }

@@ -190,22 +190,24 @@ func (m *Migrator) applyDown(ctx context.Context, migration *Migration) error {
 }
 
 // Status prints a table showing each migration's version, description,
-// and whether it has been applied.
+// status, and when it was applied.
 func (m *Migrator) Status(ctx context.Context) error {
 	migrations, applied, err := m.loadState(ctx)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("%-15s %-40s %-20s\n", "Version", "Description", "Status")
-	fmt.Println(strings.Repeat("-", 80))
+	fmt.Printf("%-10s %-25s %-10s %s\n", "Version", "Description", "Status", "Applied At")
+	fmt.Println(strings.Repeat("-", 70))
 
 	for _, mig := range migrations {
 		status := "Pending"
+		appliedAt := ""
 		if val, ok := applied[mig.Version]; ok {
-			status = fmt.Sprintf("Applied (%s)", val.AppliedAt.Format(time.RFC3339))
+			status = "Applied"
+			appliedAt = val.AppliedAt.Format("2006-01-02 15:04:05")
 		}
-		fmt.Printf("%-15d %-40s %-20s\n", mig.Version, mig.Description, status)
+		fmt.Printf("%-10d %-25s %-10s %s\n", mig.Version, mig.Description, status, appliedAt)
 	}
 
 	return nil

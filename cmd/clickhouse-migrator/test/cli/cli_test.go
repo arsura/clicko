@@ -320,6 +320,49 @@ func (s *CLISuite) TestResetOnEmptyState() {
 }
 
 // ---------------------------------------------------------------------------
+// Status
+// ---------------------------------------------------------------------------
+
+const statusHeader = "Version    Description               Status     Applied At\n" +
+	"----------------------------------------------------------------------\n"
+
+func (s *CLISuite) TestStatusAllPending() {
+	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "status")...)
+	require.NoError(s.T(), err, "cli output: %s", out)
+	require.Equal(s.T(), statusHeader+
+		"1          create test table         Pending    \n"+
+		"2          add email column          Pending    \n"+
+		"3          add age column            Pending    \n",
+		normalizeOutput(out))
+}
+
+func (s *CLISuite) TestStatusAllApplied() {
+	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up")...)
+	require.NoError(s.T(), err, "up: %s", out)
+
+	out, err = runCLI(s.binaryPath, cliArgs(s.migrationsDir, "status")...)
+	require.NoError(s.T(), err, "status: %s", out)
+	require.Equal(s.T(), statusHeader+
+		"1          create test table         Applied    APPLIED_AT         \n"+
+		"2          add email column          Applied    APPLIED_AT         \n"+
+		"3          add age column            Applied    APPLIED_AT         \n",
+		normalizeOutput(out))
+}
+
+func (s *CLISuite) TestStatusPartiallyApplied() {
+	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up-to", "2")...)
+	require.NoError(s.T(), err, "up-to: %s", out)
+
+	out, err = runCLI(s.binaryPath, cliArgs(s.migrationsDir, "status")...)
+	require.NoError(s.T(), err, "status: %s", out)
+	require.Equal(s.T(), statusHeader+
+		"1          create test table         Applied    APPLIED_AT         \n"+
+		"2          add email column          Applied    APPLIED_AT         \n"+
+		"3          add age column            Pending    \n",
+		normalizeOutput(out))
+}
+
+// ---------------------------------------------------------------------------
 // Combined
 // ---------------------------------------------------------------------------
 
@@ -358,6 +401,6 @@ func (s *CLISuite) TestInvalidMigrationsDir() {
 	out, err := runCLI(s.binaryPath, cliArgs("/nonexistent/path", "up")...)
 	require.Error(s.T(), err)
 	require.Equal(s.T(),
-		"up failed: failed to load migrations: failed to read migrations directory \"/nonexistent/path\": open /nonexistent/path: no such file or directory\n"+usageText,
-		normalizeOutput(out))
+		"failed to load migrations: failed to read migrations directory \"/nonexistent/path\": open /nonexistent/path: no such file or directory\n",
+		out)
 }

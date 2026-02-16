@@ -228,7 +228,7 @@ go test ./cmd/clickhouse-migrator/test/cli/ -v
 - [x] Strict migration file validation
 - [x] Unit tests (loader) + Integration tests (CLI + ClickHouse cluster)
 - [x] SQL injection prevention
-- [x] CLI: `reset`
-- [ ] Validate (status มี logic แล้วแต่ยังไม่ต่อ CLI), Version
+- [x] CLI: `reset`, `status`
+- [ ] Validate, Version
 - [ ] Go Integration
 - [ ] Easy Go Interface

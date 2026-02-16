@@ -5,11 +5,8 @@ import (
 )
 
 const (
-	MigrationDirectionUp     string = "up"
-	MigrationDirectionUpTo   string = "up-to"
-	MigrationDirectionDown   string = "down"
-	MigrationDirectionDownTo string = "down-to"
-	MigrationDirectionReset  string = "reset"
+	MigrationDirectionUp   string = "up"
+	MigrationDirectionDown string = "down"
 )
 
 // Migration represents a single migration.
