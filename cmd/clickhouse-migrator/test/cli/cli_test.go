@@ -44,10 +44,6 @@ func (s *CLISuite) SetupTest() {
 	s.cleanup()
 }
 
-func (s *CLISuite) TearDownTest() {
-	s.cleanup()
-}
-
 // cleanup drops test tables and removes any orphaned ZooKeeper replica
 // entries that ClickHouse may leave behind after an asynchronous DROP.
 // test_cli_migration is created by migration SQL on cluster "dev",
@@ -56,8 +52,10 @@ func (s *CLISuite) cleanup() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	_ = s.conn.Exec(ctx, "DROP TABLE IF EXISTS test_cli_migration ON CLUSTER `"+dataCluster+"` SYNC")
-	_ = s.conn.Exec(ctx, "DROP TABLE IF EXISTS `"+tableName+"` ON CLUSTER `"+migrationCluster+"` SYNC")
+	err := s.conn.Exec(ctx, "DROP TABLE IF EXISTS test_cli_migration ON CLUSTER `"+dataCluster+"` SYNC")
+	require.NoError(s.T(), err)
+	err = s.conn.Exec(ctx, "DROP TABLE IF EXISTS `"+tableName+"` ON CLUSTER `"+migrationCluster+"` SYNC")
+	require.NoError(s.T(), err)
 
 	s.dropOrphanedReplicas(ctx, "/clickhouse/tables/1/test_cli_migration")
 	s.dropOrphanedReplicas(ctx, "/clickhouse/tables/2/test_cli_migration")
@@ -69,9 +67,7 @@ func (s *CLISuite) dropOrphanedReplicas(ctx context.Context, zkPath string) {
 	rows, err := s.conn.Query(ctx,
 		"SELECT name FROM system.zookeeper WHERE path = $1",
 		zkPath+"/replicas")
-	if err != nil {
-		return
-	}
+	require.NoError(s.T(), err)
 	defer rows.Close()
 
 	for rows.Next() {
@@ -79,8 +75,9 @@ func (s *CLISuite) dropOrphanedReplicas(ctx context.Context, zkPath string) {
 		if err := rows.Scan(&replica); err != nil {
 			continue
 		}
-		_ = s.conn.Exec(ctx, fmt.Sprintf(
+		err = s.conn.Exec(ctx, fmt.Sprintf(
 			"SYSTEM DROP REPLICA '%s' FROM ZKPATH '%s'", replica, zkPath))
+		require.NoError(s.T(), err)
 	}
 }
 
@@ -281,6 +278,42 @@ func (s *CLISuite) TestDownToVersionBeyondMax() {
 
 func (s *CLISuite) TestDownToOnEmptyState() {
 	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "down-to", "0")...)
+	require.NoError(s.T(), err, "cli output: %s", out)
+	require.Equal(s.T(), "No migrations to revert\n",
+		normalizeOutput(out))
+}
+
+// ---------------------------------------------------------------------------
+// Reset
+// ---------------------------------------------------------------------------
+
+func (s *CLISuite) TestResetRevertsAllMigrations() {
+	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up")...)
+	require.NoError(s.T(), err, "up: %s", out)
+	require.Equal(s.T(), "Applying migration 1: create test table\n"+
+		"OK\n"+
+		"Applying migration 2: add email column\n"+
+		"OK\n"+
+		"Applying migration 3: add age column\n"+
+		"OK\n",
+		normalizeOutput(out))
+
+	out, err = runCLI(s.binaryPath, cliArgs(s.migrationsDir, "reset")...)
+	require.NoError(s.T(), err, "reset: %s", out)
+	require.Equal(s.T(), "Reverting migration 3: add age column\n"+
+		"OK\n"+
+		"Reverting migration 2: add email column\n"+
+		"OK\n"+
+		"Reverting migration 1: create test table\n"+
+		"OK\n",
+		normalizeOutput(out))
+
+	actual := queryAppliedMigrations(s.T(), s.conn)
+	require.Empty(s.T(), actual)
+}
+
+func (s *CLISuite) TestResetOnEmptyState() {
+	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "reset")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(), "No migrations to revert\n",
 		normalizeOutput(out))

@@ -29,6 +29,7 @@ Commands:
     up-to <version>     Apply migrations up to a specific version
     down                Rollback the last applied migration
     down-to <version>   Rollback migrations down to a specific version
+    reset               Rollback all applied migrations
 
 Options:
   -cluster string

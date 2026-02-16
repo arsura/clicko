@@ -123,6 +123,11 @@ func (m *Migrator) DownTo(ctx context.Context, target uint64) error {
 	return m.down(ctx, target, 0)
 }
 
+// Reset reverts all applied migrations.
+func (m *Migrator) Reset(ctx context.Context) error {
+	return m.down(ctx, 0, 0)
+}
+
 // down is the shared implementation for Down and DownTo.
 // target=0 means no lower bound. limit=0 means no limit on how many to revert.
 func (m *Migrator) down(ctx context.Context, target uint64, limit int) error {

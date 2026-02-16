@@ -9,6 +9,7 @@ const (
 	MigrationDirectionUpTo   string = "up-to"
 	MigrationDirectionDown   string = "down"
 	MigrationDirectionDownTo string = "down-to"
+	MigrationDirectionReset  string = "reset"
 )
 
 // Migration represents a single migration.

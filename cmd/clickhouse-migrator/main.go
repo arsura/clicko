@@ -77,6 +77,10 @@ func main() {
 		if err := m.DownTo(ctx, cmd.version); err != nil {
 			exitf("down-to failed: %v", err)
 		}
+	case migrator.MigrationDirectionReset:
+		if err := m.Reset(ctx); err != nil {
+			exitf("reset failed: %v", err)
+		}
 	}
 }
 
@@ -91,7 +95,7 @@ func parseCommandArgs(args []string) commandArgs {
 	command := args[0]
 
 	switch command {
-	case migrator.MigrationDirectionUp, migrator.MigrationDirectionDown:
+	case migrator.MigrationDirectionUp, migrator.MigrationDirectionDown, migrator.MigrationDirectionReset:
 		return commandArgs{command: command}
 
 	case migrator.MigrationDirectionUpTo, migrator.MigrationDirectionDownTo:
@@ -130,6 +134,7 @@ Commands:
     up-to <version>     Apply migrations up to a specific version
     down                Rollback the last applied migration
     down-to <version>   Rollback migrations down to a specific version
+    reset               Rollback all applied migrations
 
 Options:`)
 	flags.PrintDefaults()
