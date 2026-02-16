@@ -59,7 +59,7 @@ clickhouse-migrator [OPTIONS] COMMAND
 
 | Flag               | Default              | คำอธิบาย                                                              |
 |--------------------|----------------------|-----------------------------------------------------------------------|
-| `--dsn`            | *(required)*         | ClickHouse DSN เช่น `clickhouse://user:pass@host:9000/db`             |
+| `--uri`            | *(required)*         | ClickHouse URI เช่น `clickhouse://user:pass@host:9000/db`             |
 | `--dir`            | `migrations`         | Directory ที่เก็บไฟล์ migration                                        |
 | `--table`          | `migration_versions` | ชื่อ table สำหรับ track migration state                                |
 | `--cluster`        | *(empty)*            | ชื่อ cluster (ใส่แล้วจะเปิด `ON CLUSTER` mode)                        |
@@ -72,7 +72,7 @@ clickhouse-migrator [OPTIONS] COMMAND
 
 ```bash
 clickhouse-migrator \
-  --dsn "clickhouse://default:@localhost:9000/default" \
+  --uri "clickhouse://default:@localhost:9000/default" \
   --dir ./migrations \
   up
 ```
@@ -81,7 +81,7 @@ clickhouse-migrator \
 
 ```bash
 clickhouse-migrator \
-  --dsn "clickhouse://default:@localhost:29000/default" \
+  --uri "clickhouse://default:@localhost:29000/default" \
   --dir ./migrations \
   --cluster "all-replicated" \
   --engine "ReplicatedMergeTree('/clickhouse/all-replicated/tables/all/{database}/{table}', '{replica}')" \

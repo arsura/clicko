@@ -1,0 +1,155 @@
+package cli_test
+
+import (
+	"context"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"testing"
+	"time"
+
+	"github.com/ClickHouse/clickhouse-go/v2"
+	intnlclickhouse "github.com/arsura/clickhouse-migrator/internal/clickhouse"
+	"github.com/stretchr/testify/require"
+)
+
+const (
+	testURI          = "clickhouse://default:@localhost:29000/default"
+	migrationCluster = "all-replicated"
+	dataCluster      = "dev"
+	customEngine     = "ReplicatedMergeTree('/clickhouse/all-replicated/tables/all/{database}/{table}', '{replica}')"
+	insertQuorum     = "4"
+	tableName        = "migration_versions"
+
+	usageText = `Usage: clickhouse-migrator [OPTIONS] COMMAND
+
+Commands:
+    up                  Apply all pending migrations
+    up-to <version>     Apply migrations up to a specific version
+    down                Rollback the last applied migration
+    down-to <version>   Rollback migrations down to a specific version
+
+Options:
+  -cluster string
+    	ClickHouse cluster name (enables ON CLUSTER)
+  -dir string
+    	directory with migration files (default "migrations")
+  -engine string
+    	custom table engine (overrides default MergeTree)
+  -help
+    	print help
+  -insert-quorum string
+    	insert quorum for cluster writes
+  -table string
+    	migrations table name (default "migration_versions")
+  -uri string
+    	ClickHouse URI (e.g. clickhouse://user:pass@host:9000/db)
+`
+)
+
+// testDir returns the absolute path of the directory containing this test file.
+func testDir() string {
+	_, filename, _, _ := runtime.Caller(0)
+	return filepath.Dir(filename)
+}
+
+// buildCLI compiles the CLI binary into a temp directory and returns its path.
+func buildCLI(t *testing.T) string {
+	t.Helper()
+
+	binPath := filepath.Join(t.TempDir(), "clickhouse-migrator")
+	if runtime.GOOS == "windows" {
+		binPath += ".exe"
+	}
+
+	cmd := exec.Command("go", "build", "-o", binPath, "../../.")
+	cmd.Dir = testDir()
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "failed to build binary: %s", string(out))
+
+	return binPath
+}
+
+// dialClickHouse opens a direct connection to ClickHouse for verification queries.
+func dialClickHouse(t *testing.T) (clickhouse.Conn, func() error) {
+	t.Helper()
+
+	conn, cleanup, err := intnlclickhouse.Dial(context.Background(), testURI)
+	require.NoError(t, err)
+
+	return conn, cleanup
+}
+
+// runCLI executes the CLI binary with the given arguments and returns combined output.
+func runCLI(binaryPath string, args ...string) (string, error) {
+	cmd := exec.Command(binaryPath, args...)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+// cliArgs returns the common flags for cluster mode with the given command appended.
+func cliArgs(migrationsDir string, command ...string) []string {
+	args := []string{
+		"--uri", testURI,
+		"--dir", migrationsDir,
+		"--cluster", migrationCluster,
+		"--insert-quorum", insertQuorum,
+		"--engine", customEngine,
+	}
+	return append(args, command...)
+}
+
+// appliedMigration represents a row from the migration tracking table.
+type appliedMigration struct {
+	Version     uint64
+	Description string
+	AppliedAt   time.Time
+	Checksum    string
+}
+
+// queryAppliedMigrations returns all rows from the tracking table sorted by version ascending.
+func queryAppliedMigrations(t *testing.T, conn clickhouse.Conn) []appliedMigration {
+	t.Helper()
+
+	rows, err := conn.Query(context.Background(),
+		"SELECT version, description, applied_at, checksum FROM "+tableName+" ORDER BY version")
+	require.NoError(t, err)
+	defer rows.Close()
+
+	var migrations []appliedMigration
+	for rows.Next() {
+		var m appliedMigration
+		require.NoError(t, rows.Scan(&m.Version, &m.Description, &m.AppliedAt, &m.Checksum))
+		migrations = append(migrations, m)
+	}
+
+	return migrations
+}
+
+// assertAppliedMigrations verifies that the actual rows match the expected
+// version and description, and that applied_at is populated and checksum is empty.
+func assertAppliedMigrations(t *testing.T, actual []appliedMigration, expected []appliedMigration) {
+	t.Helper()
+
+	require.Len(t, actual, len(expected))
+	for i := range expected {
+		require.Equal(t, expected[i].Version, actual[i].Version, "version mismatch at index %d", i)
+		require.Equal(t, expected[i].Description, actual[i].Description, "description mismatch at index %d", i)
+		require.NotZero(t, actual[i].AppliedAt, "applied_at should not be zero at index %d", i)
+		require.Empty(t, actual[i].Checksum, "checksum should be empty at index %d", i)
+	}
+}
+
+var (
+	logTimestampRe = regexp.MustCompile(`\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} `)
+	okDurationRe   = regexp.MustCompile(`OK \([^)]+\)`)
+)
+
+// normalizeOutput strips log timestamp prefixes and replaces "OK (<duration>)"
+// with "OK" so that CLI output can be compared deterministically.
+func normalizeOutput(s string) string {
+	s = logTimestampRe.ReplaceAllString(s, "")
+	s = okDurationRe.ReplaceAllString(s, "OK")
+	return s
+}

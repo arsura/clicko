@@ -4,18 +4,17 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 
-	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/arsura/clickhouse-migrator/internal/clickhouse"
 	"github.com/arsura/clickhouse-migrator/pkg/migrator"
 )
 
 var (
 	flags        = flag.NewFlagSet("clickhouse-migrator", flag.ExitOnError)
 	dir          = flags.String("dir", "migrations", "directory with migration files")
-	dsn          = flags.String("dsn", "", "ClickHouse DSN (e.g. clickhouse://user:pass@host:9000/db)")
+	uri          = flags.String("uri", "", "ClickHouse URI (e.g. clickhouse://user:pass@host:9000/db)")
 	table        = flags.String("table", migrator.DefaultTableName, "migrations table name")
 	cluster      = flags.String("cluster", "", "ClickHouse cluster name (enables ON CLUSTER)")
 	customEngine = flags.String("engine", "", "custom table engine (overrides default MergeTree)")
@@ -38,28 +37,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	command := args[0]
-
-	if *dsn == "" {
-		log.Fatal("--dsn is required")
-	}
-
-	options, err := clickhouse.ParseDSN(*dsn)
-	if err != nil {
-		log.Fatalf("failed to parse DSN: %v", err)
-	}
-
-	conn, err := clickhouse.Open(options)
-	if err != nil {
-		log.Fatalf("failed to open database: %v", err)
-	}
-	defer conn.Close()
+	cmd := parseCommandArgs(args)
+	validateFlags()
 
 	ctx := context.Background()
 
-	if err := conn.Ping(ctx); err != nil {
-		log.Fatalf("failed to ping database: %v", err)
+	conn, cleanup, err := clickhouse.Dial(ctx, *uri)
+	if err != nil {
+		exitf("failed to connect to ClickHouse: %v", err)
 	}
+	defer cleanup()
 
 	loader := migrator.NewFileLoader(*dir)
 	store, err := migrator.NewStore(conn, migrator.StoreConfig{
@@ -69,56 +56,80 @@ func main() {
 		InsertQuorum: *insertQuorum,
 	})
 	if err != nil {
-		log.Fatalf("invalid store config: %v", err)
+		exitf("invalid store config: %v", err)
 	}
 	m := migrator.NewMigrator(conn, loader, store)
 
-	switch command {
-	case "up":
+	switch cmd.command {
+	case migrator.MigrationDirectionUp:
 		if err := m.Up(ctx); err != nil {
-			log.Fatalf("up failed: %v", err)
+			exitf("up failed: %v", err)
 		}
-	case "up-to":
-		if len(args) < 2 {
-			log.Fatal("usage: up-to VERSION")
+	case migrator.MigrationDirectionUpTo:
+		if err := m.UpTo(ctx, cmd.version); err != nil {
+			exitf("up-to failed: %v", err)
 		}
-		ver, err := strconv.ParseUint(args[1], 10, 64)
-		if err != nil {
-			log.Fatalf("invalid version: %v", err)
-		}
-		if err := m.UpTo(ctx, ver); err != nil {
-			log.Fatalf("up-to failed: %v", err)
-		}
-	case "down":
+	case migrator.MigrationDirectionDown:
 		if err := m.Down(ctx); err != nil {
-			log.Fatalf("down failed: %v", err)
+			exitf("down failed: %v", err)
 		}
-	case "down-to":
+	case migrator.MigrationDirectionDownTo:
+		if err := m.DownTo(ctx, cmd.version); err != nil {
+			exitf("down-to failed: %v", err)
+		}
+	}
+}
+
+type commandArgs struct {
+	command string
+	version uint64
+}
+
+// parseCommandArgs validates the command name and parses any required
+// positional arguments (e.g. VERSION for up-to / down-to).
+func parseCommandArgs(args []string) commandArgs {
+	command := args[0]
+
+	switch command {
+	case migrator.MigrationDirectionUp, migrator.MigrationDirectionDown:
+		return commandArgs{command: command}
+
+	case migrator.MigrationDirectionUpTo, migrator.MigrationDirectionDownTo:
 		if len(args) < 2 {
-			log.Fatal("usage: down-to VERSION")
+			exitf("version is required")
 		}
 		ver, err := strconv.ParseUint(args[1], 10, 64)
 		if err != nil {
-			log.Fatalf("invalid version: %v", err)
+			exitf("version must be a positive number")
 		}
-		if err := m.DownTo(ctx, ver); err != nil {
-			log.Fatalf("down-to failed: %v", err)
-		}
+		return commandArgs{command: command, version: ver}
+
 	default:
-		fmt.Printf("unknown command: %s\n", command)
-		flags.Usage()
-		os.Exit(1)
+		exitf("unknown command: %s", command)
+		return commandArgs{}
 	}
+}
+
+func validateFlags() {
+	if *uri == "" {
+		exitf("uri is required")
+	}
+}
+
+func exitf(format string, args ...any) {
+	fmt.Printf(format+"\n", args...)
+	flags.Usage()
+	os.Exit(1)
 }
 
 func usage() {
 	fmt.Println(`Usage: clickhouse-migrator [OPTIONS] COMMAND
 
 Commands:
-    up          Apply all pending migrations
-    up-to       Apply migrations up to a specific version
-    down        Rollback the last applied migration
-    down-to     Rollback migrations down to a specific version
+    up                  Apply all pending migrations
+    up-to <version>     Apply migrations up to a specific version
+    down                Rollback the last applied migration
+    down-to <version>   Rollback migrations down to a specific version
 
 Options:`)
 	flags.PrintDefaults()

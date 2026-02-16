@@ -1,6 +1,15 @@
+BINARY_NAME := clickhouse-migrator
+BUILD_DIR := bin
+
 COMPOSE_FILE := dev/cluster/docker-compose.yaml
 
-.PHONY: cluster-up cluster-down cluster-restart cluster-logs cluster-status
+.PHONY: build clean cluster-up cluster-down cluster-restart cluster-logs cluster-status
+
+build:
+	go build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/clickhouse-migrator
+
+clean:
+	rm -rf $(BUILD_DIR)
 
 cluster-up:
 	docker compose -f $(COMPOSE_FILE) up -d
