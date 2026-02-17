@@ -1,1 +1,0 @@
-ALTER TABLE test_cli_migration ON CLUSTER dev ADD COLUMN IF NOT EXISTS age UInt32 DEFAULT 0;

@@ -15,12 +15,13 @@ import (
 )
 
 const (
-	testURI          = "clickhouse://default:@localhost:29000/default"
-	migrationCluster = "all-replicated"
-	dataCluster      = "dev"
-	customEngine     = "ReplicatedMergeTree('/clickhouse/all-replicated/tables/all/{database}/{table}', '{replica}')"
-	insertQuorum     = "4"
-	tableName        = "migration_versions"
+	testURI             = "clickhouse://default:@localhost:29000/default"
+	migrationCluster    = "all-replicated"
+	dataCluster         = "dev"
+	customEngine        = "ReplicatedMergeTree('/clickhouse/all-replicated/tables/all/{database}/{table}', '{replica}')"
+	insertQuorum        = "4"
+	clusterTableName    = "cluster_migration_versions"
+	standaloneTableName = "standalone_migration_versions"
 )
 
 // flagsUsage is the shared flags section that appears in every usage context.
@@ -105,7 +106,7 @@ func buildCLI(t *testing.T) string {
 		binPath += ".exe"
 	}
 
-	cmd := exec.Command("go", "build", "-o", binPath, "../../.")
+	cmd := exec.Command("go", "build", "-o", binPath, "../.")
 	cmd.Dir = testDir()
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "failed to build binary: %s", string(out))
@@ -138,6 +139,17 @@ func cliArgs(migrationsDir string, command ...string) []string {
 		"--cluster", migrationCluster,
 		"--insert-quorum", insertQuorum,
 		"--engine", customEngine,
+		"--table", clusterTableName,
+	)
+	return args
+}
+
+// standaloneCliArgs returns the common flags for standalone (single node) mode.
+func standaloneCliArgs(migrationsDir string, command ...string) []string {
+	args := append(command,
+		"--uri", testURI,
+		"--dir", migrationsDir,
+		"--table", standaloneTableName,
 	)
 	return args
 }
@@ -149,12 +161,31 @@ type appliedMigration struct {
 	AppliedAt   time.Time
 }
 
-// queryAppliedMigrations returns all rows from the tracking table sorted by version ascending.
+// queryAppliedMigrationsFrom returns all rows from the given tracking table sorted by version ascending.
+func queryAppliedMigrationsFrom(t *testing.T, conn clickhouse.Conn, table string) []appliedMigration {
+	t.Helper()
+
+	rows, err := conn.Query(context.Background(),
+		"SELECT version, description, applied_at FROM "+table+" ORDER BY version")
+	require.NoError(t, err)
+	defer rows.Close()
+
+	var migrations []appliedMigration
+	for rows.Next() {
+		var m appliedMigration
+		require.NoError(t, rows.Scan(&m.Version, &m.Description, &m.AppliedAt))
+		migrations = append(migrations, m)
+	}
+
+	return migrations
+}
+
+// queryAppliedMigrations returns all rows from the default tracking table sorted by version ascending.
 func queryAppliedMigrations(t *testing.T, conn clickhouse.Conn) []appliedMigration {
 	t.Helper()
 
 	rows, err := conn.Query(context.Background(),
-		"SELECT version, description, applied_at FROM "+tableName+" ORDER BY version")
+		"SELECT version, description, applied_at FROM "+clusterTableName+" ORDER BY version")
 	require.NoError(t, err)
 	defer rows.Close()
 

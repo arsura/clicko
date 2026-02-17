@@ -1,1 +1,0 @@
-ALTER TABLE test_cli_migration ON CLUSTER dev DROP COLUMN IF EXISTS age;
