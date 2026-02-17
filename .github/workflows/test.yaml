@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  CLICKHOUSE_VERSION: "26.1"
+
 jobs:
   test:
     name: Test
@@ -16,6 +19,27 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+
+      - name: Cache Docker images
+        id: docker-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/docker-images.tar
+          key: docker-clickhouse-${{ env.CLICKHOUSE_VERSION }}
+
+      - name: Load cached Docker images
+        if: steps.docker-cache.outputs.cache-hit == 'true'
+        run: docker load -i /tmp/docker-images.tar
+
+      - name: Pull and save Docker images
+        if: steps.docker-cache.outputs.cache-hit != 'true'
+        run: |
+          docker pull clickhouse/clickhouse-server:${{ env.CLICKHOUSE_VERSION }}
+          docker pull clickhouse/clickhouse-keeper:${{ env.CLICKHOUSE_VERSION }}
+          docker save \
+            clickhouse/clickhouse-server:${{ env.CLICKHOUSE_VERSION }} \
+            clickhouse/clickhouse-keeper:${{ env.CLICKHOUSE_VERSION }} \
+            -o /tmp/docker-images.tar
 
       - name: Start ClickHouse cluster
         run: make cluster-up
