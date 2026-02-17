@@ -2,7 +2,7 @@
 
 services:
   ch-keeper1:
-    image: harbor.linecorp.com/lineman-infra/clickhouse/clickhouse-keeper:25.9.2.1
+    image: clickhouse/clickhouse-keeper:26.1
     container_name: ch-keeper1
     hostname: ch-keeper1
     ports:
@@ -19,7 +19,7 @@ services:
 
 
   ch-1-1:
-    image: harbor.linecorp.com/lineman-infra/clickhouse/clickhouse-server:25.9.2.1
+    image: clickhouse/clickhouse-server:26.1
     container_name: ch-1-1
     hostname: ch-1-1
     depends_on:
@@ -40,7 +40,7 @@ services:
       start_period: 20s
 
   ch-1-2:
-    image: harbor.linecorp.com/lineman-infra/clickhouse/clickhouse-server:25.9.2.1
+    image: clickhouse/clickhouse-server:26.1
     container_name: ch-1-2
     hostname: ch-1-2
     depends_on:
@@ -61,7 +61,7 @@ services:
       start_period: 20s
 
   ch-2-1:
-    image: harbor.linecorp.com/lineman-infra/clickhouse/clickhouse-server:25.9.2.1
+    image: clickhouse/clickhouse-server:26.1
     container_name: ch-2-1
     hostname: ch-2-1
     depends_on:
@@ -82,7 +82,7 @@ services:
       start_period: 20s
 
   ch-2-2:
-    image: harbor.linecorp.com/lineman-infra/clickhouse/clickhouse-server:25.9.2.1
+    image: clickhouse/clickhouse-server:26.1
     container_name: ch-2-2
     hostname: ch-2-2
     depends_on:

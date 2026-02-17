@@ -1,0 +1,41 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Start ClickHouse cluster
+        run: make cluster-up
+
+      - name: Wait for cluster healthy
+        run: |
+          for i in $(seq 1 30); do
+            if docker compose -f dev/cluster/docker-compose.yaml exec -T ch-1-1 clickhouse-client -q "SELECT 1" >/dev/null 2>&1; then
+              echo "Cluster is ready."
+              exit 0
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+          echo "Cluster failed to start"
+          exit 1
+
+      - name: Run tests
+        run: make test
+
+      - name: Stop cluster
+        if: always()
+        run: make cluster-down
