@@ -147,7 +147,6 @@ type appliedMigration struct {
 	Version     uint64
 	Description string
 	AppliedAt   time.Time
-	Checksum    string
 }
 
 // queryAppliedMigrations returns all rows from the tracking table sorted by version ascending.
@@ -155,14 +154,14 @@ func queryAppliedMigrations(t *testing.T, conn clickhouse.Conn) []appliedMigrati
 	t.Helper()
 
 	rows, err := conn.Query(context.Background(),
-		"SELECT version, description, applied_at, checksum FROM "+tableName+" ORDER BY version")
+		"SELECT version, description, applied_at FROM "+tableName+" ORDER BY version")
 	require.NoError(t, err)
 	defer rows.Close()
 
 	var migrations []appliedMigration
 	for rows.Next() {
 		var m appliedMigration
-		require.NoError(t, rows.Scan(&m.Version, &m.Description, &m.AppliedAt, &m.Checksum))
+		require.NoError(t, rows.Scan(&m.Version, &m.Description, &m.AppliedAt))
 		migrations = append(migrations, m)
 	}
 
@@ -170,7 +169,7 @@ func queryAppliedMigrations(t *testing.T, conn clickhouse.Conn) []appliedMigrati
 }
 
 // assertAppliedMigrations verifies that the actual rows match the expected
-// version and description, and that applied_at is populated and checksum is empty.
+// version and description, and that applied_at is populated.
 func assertAppliedMigrations(t *testing.T, actual []appliedMigration, expected []appliedMigration) {
 	t.Helper()
 
@@ -179,7 +178,6 @@ func assertAppliedMigrations(t *testing.T, actual []appliedMigration, expected [
 		require.Equal(t, expected[i].Version, actual[i].Version, "version mismatch at index %d", i)
 		require.Equal(t, expected[i].Description, actual[i].Description, "description mismatch at index %d", i)
 		require.NotZero(t, actual[i].AppliedAt, "applied_at should not be zero at index %d", i)
-		require.Empty(t, actual[i].Checksum, "checksum should be empty at index %d", i)
 	}
 }
 

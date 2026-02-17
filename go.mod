@@ -1,6 +1,6 @@
 module github.com/arsura/clickhouse-migrator
 
-go 1.25.1
+go 1.26
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.42.0

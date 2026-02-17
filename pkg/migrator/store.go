@@ -75,14 +75,10 @@ func (s *store) EnsureTable(ctx context.Context) error {
 		engine = defaultClusterEngine
 	}
 
-	// checksum stores a SHA256 hash of the up.sql content at the time of application.
-	// It will be used by a future "validate" command to detect migration files
-	// that were modified after being applied.
 	createStmt += fmt.Sprintf(` (
 		version UInt64,
 		description String,
-		applied_at DateTime DEFAULT now(),
-		checksum String
+		applied_at DateTime DEFAULT now()
 	) ENGINE = %s ORDER BY version`, engine)
 
 	return s.conn.Exec(ctx, createStmt)
