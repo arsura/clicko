@@ -1,4 +1,4 @@
-package migrator
+package clicko
 
 import (
 	"context"
@@ -18,8 +18,8 @@ import (
 //   - Log a clear, actionable error message on permanent failure.
 //   - Add "force-add" / "force-remove" CLI commands for manual recovery.
 
-// Migrator orchestrates loading migration files, comparing them against
-// the applied state in ClickHouse, and executing the appropriate SQL.
+// Migrator orchestrates loading migrations (SQL files or Go functions),
+// comparing them against the applied state in ClickHouse, and executing them.
 type Migrator struct {
 	loader Loader
 	store  Store
@@ -102,12 +102,17 @@ func (m *Migrator) loadState(ctx context.Context) ([]*Migration, map[uint64]*Mig
 }
 
 func (m *Migrator) applyUp(ctx context.Context, migration *Migration) error {
-	if migration.Source.UpSQL == "" {
-		return fmt.Errorf("migration %d has no up.sql file", migration.Version)
-	}
-
-	if err := m.conn.Exec(ctx, migration.Source.UpSQL); err != nil {
-		return err
+	switch migration.Source.Type {
+	case MigrationSourceTypeGo:
+		if err := migration.Source.UpFunc(ctx, m.conn); err != nil {
+			return err
+		}
+	case MigrationSourceTypeSQL:
+		if err := m.conn.Exec(ctx, migration.Source.UpSQL); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("migration %d has unknown source type: %s", migration.Version, migration.Source.Type)
 	}
 
 	return m.store.Add(ctx, migration.Version, migration.Description)
@@ -175,15 +180,18 @@ func (m *Migrator) down(ctx context.Context, target uint64, limit int) error {
 	return nil
 }
 
-// applyDown executes the down.sql and removes the version from the tracking table.
-// Returns an error if the migration has no down.sql file.
 func (m *Migrator) applyDown(ctx context.Context, migration *Migration) error {
-	if migration.Source.DownSQL == "" {
-		return fmt.Errorf("migration %d has no down.sql file, cannot rollback", migration.Version)
-	}
-
-	if err := m.conn.Exec(ctx, migration.Source.DownSQL); err != nil {
-		return err
+	switch migration.Source.Type {
+	case MigrationSourceTypeGo:
+		if err := migration.Source.DownFunc(ctx, m.conn); err != nil {
+			return err
+		}
+	case MigrationSourceTypeSQL:
+		if err := m.conn.Exec(ctx, migration.Source.DownSQL); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("migration %d has unknown source type: %s", migration.Version, migration.Source.Type)
 	}
 
 	return m.store.Remove(ctx, migration.Version)

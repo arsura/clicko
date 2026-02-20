@@ -1,4 +1,4 @@
-# clickhouse-migrator
+# clicko
 
 A SQL migration tool built specifically for ClickHouse, with first-class support for clusters and `ReplicatedMergeTree`. Inspired by [Goose](https://github.com/pressly/goose).
 
@@ -13,23 +13,23 @@ A SQL migration tool built specifically for ClickHouse, with first-class support
 ## Installation
 
 ```bash
-go install github.com/arsura/clickhouse-migrator/cmd/clickhouse-migrator@latest
+go install github.com/arsura/clicko/cmd/cli@latest
 ```
 
 Or build from source:
 
 ```bash
-go build -o clickhouse-migrator ./cmd/clickhouse-migrator
+go build -o clicko ./cmd/cli
 ```
 
 ## Quick Start
 
 ```bash
 # Apply all pending migrations
-clickhouse-migrator --uri "clickhouse://default:@localhost:9000/default" up
+clicko --uri "clickhouse://default:@localhost:9000/default" up
 
 # Check migration status
-clickhouse-migrator --uri "clickhouse://default:@localhost:9000/default" status
+clicko --uri "clickhouse://default:@localhost:9000/default" status
 ```
 
 ## Commands
@@ -84,7 +84,7 @@ Rules:
 ### Standalone
 
 ```bash
-clickhouse-migrator \
+clicko \
   --uri "clickhouse://default:@localhost:9000/default" \
   --dir ./migrations \
   up
@@ -93,7 +93,7 @@ clickhouse-migrator \
 ### Cluster Mode
 
 ```bash
-clickhouse-migrator \
+clicko \
   --uri "clickhouse://default:@localhost:29000/default" \
   --dir ./migrations \
   --cluster "all-replicated" \
@@ -148,14 +148,14 @@ Cluster topology:
 Unit tests (no ClickHouse required):
 
 ```bash
-go test ./pkg/migrator/ -v
+go test . -v
 ```
 
 Integration tests (requires cluster):
 
 ```bash
 make cluster-up
-go test ./cmd/clickhouse-migrator/test/cli/ -v
+go test ./cmd/cli/test/ -v
 ```
 
 Integration tests skip automatically if ClickHouse is not running.

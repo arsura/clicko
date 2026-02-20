@@ -1,4 +1,4 @@
-module github.com/arsura/clickhouse-migrator
+module github.com/arsura/clicko
 
 go 1.26
 

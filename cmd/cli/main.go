@@ -7,8 +7,8 @@ import (
 
 	"github.com/alecthomas/kong"
 
-	"github.com/arsura/clickhouse-migrator/internal/clickhouse"
-	"github.com/arsura/clickhouse-migrator/pkg/migrator"
+	"github.com/arsura/clicko"
+	"github.com/arsura/clicko/internal/clickhouse"
 )
 
 type CLI struct {
@@ -39,42 +39,42 @@ type ResetCmd struct{}
 type StatusCmd struct{}
 
 func (c *UpCmd) Run(globals *CLI) error {
-	return run(globals, func(ctx context.Context, m *migrator.Migrator) error {
+	return run(globals, func(ctx context.Context, m *clicko.Migrator) error {
 		return m.Up(ctx)
 	})
 }
 
 func (c *UpToCmd) Run(globals *CLI) error {
-	return run(globals, func(ctx context.Context, m *migrator.Migrator) error {
+	return run(globals, func(ctx context.Context, m *clicko.Migrator) error {
 		return m.UpTo(ctx, c.Version)
 	})
 }
 
 func (c *DownCmd) Run(globals *CLI) error {
-	return run(globals, func(ctx context.Context, m *migrator.Migrator) error {
+	return run(globals, func(ctx context.Context, m *clicko.Migrator) error {
 		return m.Down(ctx)
 	})
 }
 
 func (c *DownToCmd) Run(globals *CLI) error {
-	return run(globals, func(ctx context.Context, m *migrator.Migrator) error {
+	return run(globals, func(ctx context.Context, m *clicko.Migrator) error {
 		return m.DownTo(ctx, c.Version)
 	})
 }
 
 func (c *ResetCmd) Run(globals *CLI) error {
-	return run(globals, func(ctx context.Context, m *migrator.Migrator) error {
+	return run(globals, func(ctx context.Context, m *clicko.Migrator) error {
 		return m.Reset(ctx)
 	})
 }
 
 func (c *StatusCmd) Run(globals *CLI) error {
-	return run(globals, func(ctx context.Context, m *migrator.Migrator) error {
+	return run(globals, func(ctx context.Context, m *clicko.Migrator) error {
 		return m.Status(ctx)
 	})
 }
 
-func run(globals *CLI, fn func(context.Context, *migrator.Migrator) error) error {
+func run(globals *CLI, fn func(context.Context, *clicko.Migrator) error) error {
 	ctx := context.Background()
 
 	conn, cleanup, err := clickhouse.Dial(ctx, globals.URI)
@@ -83,8 +83,8 @@ func run(globals *CLI, fn func(context.Context, *migrator.Migrator) error) error
 	}
 	defer cleanup()
 
-	loader := migrator.NewFileLoader(globals.Dir)
-	store, err := migrator.NewStore(conn, migrator.StoreConfig{
+	loader := clicko.NewSQLLoader(globals.Dir)
+	store, err := clicko.NewStore(conn, clicko.StoreConfig{
 		TableName:    globals.Table,
 		Cluster:      globals.Cluster,
 		CustomEngine: globals.Engine,
@@ -94,7 +94,7 @@ func run(globals *CLI, fn func(context.Context, *migrator.Migrator) error) error
 		return fmt.Errorf("invalid store config: %w", err)
 	}
 
-	m := migrator.NewMigrator(conn, loader, store)
+	m := clicko.NewMigrator(conn, loader, store)
 	return fn(ctx, m)
 }
 

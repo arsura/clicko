@@ -33,7 +33,7 @@ func (s *CLIValidationSuite) TestNoCommand() {
 	out, err := runCLI(s.binaryPath)
 	require.Error(s.T(), err)
 	require.Equal(s.T(),
-		globalUsage+"\nclickhouse-migrator: error: missing flags: --uri=STRING\n",
+		globalUsage+"\nclicko: error: missing flags: --uri=STRING\n",
 		out)
 }
 
@@ -41,7 +41,7 @@ func (s *CLIValidationSuite) TestUnknownCommand() {
 	out, err := runCLI(s.binaryPath, "--uri", "x", "foobar")
 	require.Error(s.T(), err)
 	require.Equal(s.T(),
-		globalUsage+"\nclickhouse-migrator: error: unexpected argument foobar\n",
+		globalUsage+"\nclicko: error: unexpected argument foobar\n",
 		out)
 }
 
@@ -49,7 +49,7 @@ func (s *CLIValidationSuite) TestMissingURI() {
 	out, err := runCLI(s.binaryPath, "up")
 	require.Error(s.T(), err)
 	require.Equal(s.T(),
-		upCmdUsage+"\nclickhouse-migrator: error: missing flags: --uri=STRING\n",
+		upCmdUsage+"\nclicko: error: missing flags: --uri=STRING\n",
 		out)
 }
 
@@ -57,7 +57,7 @@ func (s *CLIValidationSuite) TestUpToMissingVersion() {
 	out, err := runCLI(s.binaryPath, "up-to", "--uri", "x")
 	require.Error(s.T(), err)
 	require.Equal(s.T(),
-		upToCmdUsage+"\nclickhouse-migrator: error: expected \"<version>\"\n",
+		upToCmdUsage+"\nclicko: error: expected \"<version>\"\n",
 		out)
 }
 
@@ -65,7 +65,7 @@ func (s *CLIValidationSuite) TestDownToMissingVersion() {
 	out, err := runCLI(s.binaryPath, "down-to", "--uri", "x")
 	require.Error(s.T(), err)
 	require.Equal(s.T(),
-		downToCmdUsage+"\nclickhouse-migrator: error: expected \"<version>\"\n",
+		downToCmdUsage+"\nclicko: error: expected \"<version>\"\n",
 		out)
 }
 
@@ -73,7 +73,7 @@ func (s *CLIValidationSuite) TestUpToInvalidVersion() {
 	out, err := runCLI(s.binaryPath, "up-to", "--uri", "x", "abc")
 	require.Error(s.T(), err)
 	require.Equal(s.T(),
-		upToCmdUsage+"\nclickhouse-migrator: error: <version>: expected a valid 64 bit uint but got \"abc\"\n",
+		upToCmdUsage+"\nclicko: error: <version>: expected a valid 64 bit uint but got \"abc\"\n",
 		out)
 }
 
@@ -81,7 +81,7 @@ func (s *CLIValidationSuite) TestDownToInvalidVersion() {
 	out, err := runCLI(s.binaryPath, "down-to", "--uri", "x", "abc")
 	require.Error(s.T(), err)
 	require.Equal(s.T(),
-		downToCmdUsage+"\nclickhouse-migrator: error: <version>: expected a valid 64 bit uint but got \"abc\"\n",
+		downToCmdUsage+"\nclicko: error: <version>: expected a valid 64 bit uint but got \"abc\"\n",
 		out)
 }
 
@@ -89,7 +89,7 @@ func (s *CLIValidationSuite) TestUpToNegativeVersion() {
 	out, err := runCLI(s.binaryPath, "up-to", "--uri", "x", "--", "-1")
 	require.Error(s.T(), err)
 	require.Equal(s.T(),
-		upToCmdUsage+"\nclickhouse-migrator: error: <version>: expected a valid 64 bit uint but got \"-1\"\n",
+		upToCmdUsage+"\nclicko: error: <version>: expected a valid 64 bit uint but got \"-1\"\n",
 		out)
 }
 
@@ -97,6 +97,6 @@ func (s *CLIValidationSuite) TestDownToNegativeVersion() {
 	out, err := runCLI(s.binaryPath, "down-to", "--uri", "x", "--", "-1")
 	require.Error(s.T(), err)
 	require.Equal(s.T(),
-		downToCmdUsage+"\nclickhouse-migrator: error: <version>: expected a valid 64 bit uint but got \"-1\"\n",
+		downToCmdUsage+"\nclicko: error: <version>: expected a valid 64 bit uint but got \"-1\"\n",
 		out)
 }

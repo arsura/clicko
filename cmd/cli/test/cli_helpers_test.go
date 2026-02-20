@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	intnlclickhouse "github.com/arsura/clickhouse-migrator/internal/clickhouse"
+	intnlclickhouse "github.com/arsura/clicko/internal/clickhouse"
 	"github.com/stretchr/testify/require"
 )
 
@@ -39,7 +39,7 @@ const flagsUsage = `Flags:
 `
 
 // globalUsage is the full help text shown when no command is given or an unknown command is used.
-const globalUsage = `Usage: clickhouse-migrator --uri=STRING <command> [flags]
+const globalUsage = `Usage: clicko --uri=STRING <command> [flags]
 
 ` + flagsUsage + `
 Commands:
@@ -61,18 +61,18 @@ Commands:
   status --uri=STRING [flags]
     Show migration status.
 
-Run "clickhouse-migrator <command> --help" for more information on a command.
+Run "clicko <command> --help" for more information on a command.
 `
 
 // upCmdUsage is the help text shown for the "up" command.
-const upCmdUsage = `Usage: clickhouse-migrator up --uri=STRING [flags]
+const upCmdUsage = `Usage: clicko up --uri=STRING [flags]
 
 Apply all pending migrations.
 
 ` + flagsUsage
 
 // upToCmdUsage is the help text shown for the "up-to" command.
-const upToCmdUsage = `Usage: clickhouse-migrator up-to --uri=STRING <version> [flags]
+const upToCmdUsage = `Usage: clicko up-to --uri=STRING <version> [flags]
 
 Apply migrations up to a specific version.
 
@@ -82,7 +82,7 @@ Arguments:
 ` + flagsUsage
 
 // downToCmdUsage is the help text shown for the "down-to" command.
-const downToCmdUsage = `Usage: clickhouse-migrator down-to --uri=STRING <version> [flags]
+const downToCmdUsage = `Usage: clicko down-to --uri=STRING <version> [flags]
 
 Rollback migrations down to a specific version.
 
@@ -101,7 +101,7 @@ func testDir() string {
 func buildCLI(t *testing.T) string {
 	t.Helper()
 
-	binPath := filepath.Join(t.TempDir(), "clickhouse-migrator")
+	binPath := filepath.Join(t.TempDir(), "clicko")
 	if runtime.GOOS == "windows" {
 		binPath += ".exe"
 	}

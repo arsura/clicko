@@ -1,4 +1,4 @@
-package migrator
+package clicko
 
 import (
 	"fmt"
@@ -14,13 +14,13 @@ type Loader interface {
 	Load() ([]*Migration, error)
 }
 
-type fileLoader struct {
+type sqlLoader struct {
 	dir string
 }
 
-// NewFileLoader returns a Loader that reads SQL migration files from dir.
-func NewFileLoader(dir string) Loader {
-	return &fileLoader{dir: dir}
+// NewSQLLoader returns a clicko.Loader that reads SQL migration files from dir.
+func NewSQLLoader(dir string) Loader {
+	return &sqlLoader{dir: dir}
 }
 
 // Load reads .sql files from the configured directory and returns migrations
@@ -39,7 +39,7 @@ func NewFileLoader(dir string) Loader {
 //   - Every .sql file must match the naming convention exactly.
 //   - Every version must have an .up.sql file; .down.sql is optional.
 //   - The up and down files for the same version must share the same description.
-func (l *fileLoader) Load() ([]*Migration, error) {
+func (l *sqlLoader) Load() ([]*Migration, error) {
 	files, err := os.ReadDir(l.dir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read migrations directory %q: %w", l.dir, err)
@@ -116,6 +116,31 @@ func (l *fileLoader) Load() ([]*Migration, error) {
 
 	migrations := make([]*Migration, 0, len(migrationsMap))
 	for _, m := range migrationsMap {
+		m.Source.Type = MigrationSourceTypeSQL
+		migrations = append(migrations, m)
+	}
+
+	sort.Slice(migrations, func(i, j int) bool {
+		return migrations[i].Version < migrations[j].Version
+	})
+
+	return migrations, nil
+}
+
+type goLoader struct{}
+
+// NewGoLoader returns a Loader that reads migrations from the global Go
+// migration registry populated by AddMigration / AddNamedMigration.
+func NewGoLoader() Loader {
+	return &goLoader{}
+}
+
+func (l *goLoader) Load() ([]*Migration, error) {
+	registered := getGlobalGoMigrations()
+
+	migrations := make([]*Migration, 0, len(registered))
+	for _, m := range registered {
+		m.Source.Type = MigrationSourceTypeGo
 		migrations = append(migrations, m)
 	}
 
