@@ -10,16 +10,13 @@ import (
 
 	// Blank import triggers init() in each migration file,
 	// which registers them via clicko.AddMigration.
-	_ "github.com/arsura/clicko/example/go-migrations/migrations"
+	_ "github.com/arsura/clicko/example/go/migrations"
 )
 
 func main() {
-	uri := "clickhouse://default:@localhost:9000/default"
-	if v := os.Getenv("CLICKHOUSE_URI"); v != "" {
-		uri = v
-	}
-
 	ctx := context.Background()
+
+	uri := "clickhouse://default:@localhost:29000/default"
 
 	// 1. Connect to ClickHouse
 	opts, err := clickhouse.ParseDSN(uri)
@@ -36,7 +33,12 @@ func main() {
 	defer conn.Close()
 
 	// 2. Create migrator
-	migrator, err := clicko.New(conn, clicko.StoreConfig{})
+	migrator, err := clicko.New(conn, clicko.StoreConfig{
+		TableName:    "migration_versions_go",
+		Cluster:      "all-replicated",
+		CustomEngine: "ReplicatedMergeTree('/clickhouse/all-replicated/table/all/{database}/{table}', '{replica}')",
+		InsertQuorum: "4",
+	})
 	if err != nil {
 		fatal(err)
 	}

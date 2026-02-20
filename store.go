@@ -11,7 +11,7 @@ import (
 
 const (
 	DefaultTableName       = "migration_versions"
-	defaultClusterEngine   = "ReplicatedMergeTree('/clickhouse/{cluster}/tables/{shard}/{database}/{table}', '{replica}')"
+	defaultClusterEngine   = "ReplicatedMergeTree('/clickhouse/{cluster}/table/{shard}/{database}/{table}', '{replica}')"
 	defaultMergeTreeEngine = "MergeTree()"
 )
 
