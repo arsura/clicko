@@ -47,9 +47,9 @@ func (s *CLIStandaloneSuite) cleanup() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	err := s.conn.Exec(ctx, "DROP TABLE IF EXISTS test_standalone_migration SYNC")
+	err := s.conn.Exec(ctx, "DROP TABLE IF EXISTS "+standaloneDataTable+" SYNC")
 	require.NoError(s.T(), err)
-	err = s.conn.Exec(ctx, "DROP TABLE IF EXISTS `"+standaloneTableName+"` SYNC")
+	err = s.conn.Exec(ctx, "DROP TABLE IF EXISTS `"+testStandaloneMigrationTable+"` SYNC")
 	require.NoError(s.T(), err)
 }
 
@@ -68,7 +68,7 @@ func (s *CLIStandaloneSuite) TestUpAppliesAllMigrations() {
 		"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrationsFrom(s.T(), s.conn, standaloneTableName)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, testStandaloneMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
 
@@ -88,7 +88,7 @@ func (s *CLIStandaloneSuite) TestUpIdempotent() {
 	require.Equal(s.T(), "No pending migrations to apply\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrationsFrom(s.T(), s.conn, standaloneTableName)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, testStandaloneMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
 
@@ -105,7 +105,7 @@ func (s *CLIStandaloneSuite) TestUpToTargetVersion() {
 		"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrationsFrom(s.T(), s.conn, standaloneTableName)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, testStandaloneMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations[:2])
 }
 
@@ -125,7 +125,7 @@ func (s *CLIStandaloneSuite) TestUpToAlreadyApplied() {
 	require.Equal(s.T(), "No pending migrations to apply\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrationsFrom(s.T(), s.conn, standaloneTableName)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, testStandaloneMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
 
@@ -140,7 +140,7 @@ func (s *CLIStandaloneSuite) TestUpToVersionBeyondMax() {
 		"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrationsFrom(s.T(), s.conn, standaloneTableName)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, testStandaloneMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
 
@@ -165,7 +165,7 @@ func (s *CLIStandaloneSuite) TestDownRevertsLastMigration() {
 		"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrationsFrom(s.T(), s.conn, standaloneTableName)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, testStandaloneMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations[:2])
 }
 
@@ -199,7 +199,7 @@ func (s *CLIStandaloneSuite) TestDownToTargetVersion() {
 		"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrationsFrom(s.T(), s.conn, standaloneTableName)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, testStandaloneMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations[:1])
 }
 
@@ -224,7 +224,7 @@ func (s *CLIStandaloneSuite) TestDownToZeroRevertsAll() {
 		"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrationsFrom(s.T(), s.conn, standaloneTableName)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, testStandaloneMigrationTable)
 	require.Empty(s.T(), actual)
 }
 
@@ -237,7 +237,7 @@ func (s *CLIStandaloneSuite) TestDownToVersionBeyondMax() {
 	require.Equal(s.T(), "No migrations to revert\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrationsFrom(s.T(), s.conn, standaloneTableName)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, testStandaloneMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
 
@@ -273,7 +273,7 @@ func (s *CLIStandaloneSuite) TestResetRevertsAllMigrations() {
 		"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrationsFrom(s.T(), s.conn, standaloneTableName)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, testStandaloneMigrationTable)
 	require.Empty(s.T(), actual)
 }
 
@@ -351,7 +351,7 @@ func (s *CLIStandaloneSuite) TestUpThenDownThenUpAgain() {
 		"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrationsFrom(s.T(), s.conn, standaloneTableName)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, testStandaloneMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
 
@@ -365,4 +365,108 @@ func (s *CLIStandaloneSuite) TestInvalidMigrationsDir() {
 	require.Equal(s.T(),
 		"failed to load migrations: failed to read migrations directory \"/nonexistent/path\": open /nonexistent/path: no such file or directory\n",
 		out)
+}
+
+func (s *CLIStandaloneSuite) TestInvalidInsertQuorum() {
+	out, err := runCLI(s.binaryPath,
+		"up",
+		"--uri", testURI,
+		"--dir", s.migrationsDir,
+		"--table", testStandaloneMigrationTable,
+		"--insert-quorum", "abc",
+	)
+	require.Error(s.T(), err)
+	require.Equal(s.T(),
+		"invalid store config: invalid insert quorum \"abc\": must be a number or \"auto\"\n",
+		out)
+}
+
+// ---------------------------------------------------------------------------
+// Forward-only migrations
+// ---------------------------------------------------------------------------
+
+// CLIStandaloneForwardOnlySuite tests rollback behaviour when one migration
+// has no .down.sql file (forward-only). Migration 2 is intentionally missing
+// its down file so that Down() and Reset() must skip it.
+type CLIStandaloneForwardOnlySuite struct {
+	suite.Suite
+	binaryPath            string
+	conn                  clickhouse.Conn
+	clickHouseCleanupFunc func() error
+	migrationsDir         string
+}
+
+func TestCLIStandaloneForwardOnlySuite(t *testing.T) {
+	suite.Run(t, new(CLIStandaloneForwardOnlySuite))
+}
+
+func (s *CLIStandaloneForwardOnlySuite) SetupSuite() {
+	s.binaryPath = buildCLI(s.T())
+	s.migrationsDir = filepath.Join(testDir(), "testdata", "standalone_with_forward_only")
+	s.conn, s.clickHouseCleanupFunc = dialClickHouse(s.T())
+}
+
+func (s *CLIStandaloneForwardOnlySuite) TearDownSuite() {
+	s.cleanup()
+	s.clickHouseCleanupFunc()
+}
+
+func (s *CLIStandaloneForwardOnlySuite) SetupTest() {
+	s.cleanup()
+}
+
+func (s *CLIStandaloneForwardOnlySuite) cleanup() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	err := s.conn.Exec(ctx, "DROP TABLE IF EXISTS "+forwardOnlyDataTable+" SYNC")
+	require.NoError(s.T(), err)
+	err = s.conn.Exec(ctx, "DROP TABLE IF EXISTS `"+testForwardOnlyMigrationTable+"` SYNC")
+	require.NoError(s.T(), err)
+}
+
+// TestDownSkipsForwardOnlyMigrations verifies that Down() skips all applied
+// migrations when none of them define a down direction, and reports that
+// there is nothing to revert.
+func (s *CLIStandaloneForwardOnlySuite) TestDownSkipsForwardOnlyMigrations() {
+	out, err := runCLI(s.binaryPath, forwardOnlyCliArgs(s.migrationsDir, "up")...)
+	require.NoError(s.T(), err, "up: %s", out)
+
+	out, err = runCLI(s.binaryPath, forwardOnlyCliArgs(s.migrationsDir, "down")...)
+	require.NoError(s.T(), err, "down: %s", out)
+	require.Equal(s.T(),
+		"Skipping migration 3: add age column (forward-only, no down defined)\n"+
+			"No migrations to revert\n",
+		normalizeOutput(out))
+
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, testForwardOnlyMigrationTable)
+	assertAppliedMigrations(s.T(), actual, []appliedMigration{
+		{Version: 1, Description: "create test table"},
+		{Version: 2, Description: "add email column"},
+		{Version: 3, Description: "add age column"},
+	})
+}
+
+// TestResetSkipsForwardOnlyMigrations verifies that Reset() skips all applied
+// migrations when none of them define a down direction, and reports that
+// there is nothing to revert.
+func (s *CLIStandaloneForwardOnlySuite) TestResetSkipsForwardOnlyMigrations() {
+	out, err := runCLI(s.binaryPath, forwardOnlyCliArgs(s.migrationsDir, "up")...)
+	require.NoError(s.T(), err, "up: %s", out)
+
+	out, err = runCLI(s.binaryPath, forwardOnlyCliArgs(s.migrationsDir, "reset")...)
+	require.NoError(s.T(), err, "reset: %s", out)
+	require.Equal(s.T(),
+		"Skipping migration 3: add age column (forward-only, no down defined)\n"+
+			"Skipping migration 2: add email column (forward-only, no down defined)\n"+
+			"Skipping migration 1: create test table (forward-only, no down defined)\n"+
+			"No migrations to revert\n",
+		normalizeOutput(out))
+
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, testForwardOnlyMigrationTable)
+	assertAppliedMigrations(s.T(), actual, []appliedMigration{
+		{Version: 1, Description: "create test table"},
+		{Version: 2, Description: "add email column"},
+		{Version: 3, Description: "add age column"},
+	})
 }

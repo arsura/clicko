@@ -25,7 +25,7 @@ type CLIClusterSuite struct {
 	migrationsDir         string
 }
 
-func TestCLISuite(t *testing.T) {
+func TestCLIClusterSuite(t *testing.T) {
 	suite.Run(t, new(CLIClusterSuite))
 }
 
@@ -46,19 +46,24 @@ func (s *CLIClusterSuite) SetupTest() {
 
 // cleanup drops test tables and removes any orphaned ZooKeeper replica
 // entries that ClickHouse may leave behind after an asynchronous DROP.
-// test_cluster_migration is created by migration SQL on cluster "dev",
+// cluster_table is created by migration SQL on cluster "dev",
 // while the tracking table uses the "migration" cluster.
 func (s *CLIClusterSuite) cleanup() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	err := s.conn.Exec(ctx, "DROP TABLE IF EXISTS test_cluster_migration ON CLUSTER `"+dataCluster+"` SYNC")
+	err := s.conn.Exec(ctx, "DROP TABLE IF EXISTS "+clusterDataTable+" ON CLUSTER `"+dataCluster+"` SYNC")
 	require.NoError(s.T(), err)
-	err = s.conn.Exec(ctx, "DROP TABLE IF EXISTS `"+clusterTableName+"` ON CLUSTER `"+migrationCluster+"` SYNC")
+	err = s.conn.Exec(ctx, "DROP TABLE IF EXISTS `"+testClusterMigrationTable+"` ON CLUSTER `"+migrationCluster+"` SYNC")
+	require.NoError(s.T(), err)
+	err = s.conn.Exec(ctx, "DROP TABLE IF EXISTS `"+testDefaultEngineClusterMigrationTable+"` ON CLUSTER `"+migrationCluster+"` SYNC")
 	require.NoError(s.T(), err)
 
-	s.dropOrphanedReplicas(ctx, "/clickhouse/tables/1/test_cluster_migration")
-	s.dropOrphanedReplicas(ctx, "/clickhouse/tables/2/test_cluster_migration")
+	s.dropOrphanedReplicas(ctx, "/clickhouse/tables/1/"+clusterDataTable)
+	s.dropOrphanedReplicas(ctx, "/clickhouse/tables/2/"+clusterDataTable)
+
+	s.dropOrphanedReplicas(ctx, "/clickhouse/dev/table/1/default/"+testDefaultEngineClusterMigrationTable)
+	s.dropOrphanedReplicas(ctx, "/clickhouse/dev/table/2/default/"+testDefaultEngineClusterMigrationTable)
 }
 
 // dropOrphanedReplicas queries ZooKeeper for any remaining replica entries
@@ -390,6 +395,38 @@ func (s *CLIClusterSuite) TestUpThenDownThenUpAgain() {
 		normalizeOutput(out))
 
 	actual := queryAppliedMigrations(s.T(), s.conn)
+	assertAppliedMigrations(s.T(), actual, expectedMigrations)
+}
+
+// ---------------------------------------------------------------------------
+// Engine
+// ---------------------------------------------------------------------------
+
+// TestUpWithDefaultClusterEngine verifies that EnsureTable uses the built-in
+// ReplicatedMergeTree path when --cluster is set but --engine is omitted.
+func (s *CLIClusterSuite) TestUpWithDefaultClusterEngine() {
+	args := []string{
+		"up",
+		"--uri", testURI,
+		"--dir", s.migrationsDir,
+		"--cluster", migrationCluster,
+		"--table", testDefaultEngineClusterMigrationTable,
+		// deliberately omitting --engine to exercise the defaultClusterEngine branch
+		// deliberately omitting --insert-quorum since this test is about engine selection only
+	}
+	out, err := runCLI(s.binaryPath, args...)
+	require.NoError(s.T(), err, "cli output: %s", out)
+	require.Equal(s.T(),
+		"WARNING: no custom engine specified for cluster mode; falling back to the default engine whose ZooKeeper path includes {shard}, which may result in separate replication groups per shard and inconsistent migration state across nodes — set a custom engine with a unified ZooKeeper path to avoid this\n"+
+			"Applying migration 1: create test table\n"+
+			"OK\n"+
+			"Applying migration 2: add email column\n"+
+			"OK\n"+
+			"Applying migration 3: add age column\n"+
+			"OK\n",
+		normalizeOutput(out))
+
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, testDefaultEngineClusterMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
 

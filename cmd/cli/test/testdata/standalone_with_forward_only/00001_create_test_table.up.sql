@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS standalone_table (
+CREATE TABLE IF NOT EXISTS forward_only_table (
     id UInt64,
     name String
 ) ENGINE = MergeTree()

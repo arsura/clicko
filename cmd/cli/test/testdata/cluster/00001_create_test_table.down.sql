@@ -1,1 +1,1 @@
-DROP TABLE IF EXISTS test_cluster_migration ON CLUSTER dev;
+DROP TABLE IF EXISTS cluster_table ON CLUSTER dev;

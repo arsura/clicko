@@ -3,6 +3,7 @@ package clicko
 import (
 	"context"
 	"fmt"
+	"log"
 	"strconv"
 	"time"
 
@@ -73,10 +74,14 @@ func (s *store) EnsureTable(ctx context.Context) error {
 	}
 
 	engine := defaultMergeTreeEngine
-	if s.config.CustomEngine != "" {
-		engine = s.config.CustomEngine
-	} else if s.config.IsCluster() {
-		engine = defaultClusterEngine
+
+	if s.config.IsCluster() {
+		if s.config.CustomEngine == "" {
+			log.Printf("WARNING: no custom engine specified for cluster mode; falling back to the default engine whose ZooKeeper path includes {shard}, which may result in separate replication groups per shard and inconsistent migration state across nodes — set a custom engine with a unified ZooKeeper path to avoid this")
+			engine = defaultClusterEngine
+		} else {
+			engine = s.config.CustomEngine
+		}
 	}
 
 	createStmt += fmt.Sprintf(` (

@@ -1,1 +1,1 @@
-ALTER TABLE test_standalone_migration DROP COLUMN IF EXISTS email;
+ALTER TABLE standalone_table DROP COLUMN IF EXISTS email;

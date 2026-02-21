@@ -1,1 +1,1 @@
-ALTER TABLE test_cluster_migration ON CLUSTER dev DROP COLUMN IF EXISTS email;
+ALTER TABLE cluster_table ON CLUSTER dev DROP COLUMN IF EXISTS email;

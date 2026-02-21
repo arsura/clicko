@@ -1,1 +1,1 @@
-ALTER TABLE test_standalone_migration ADD COLUMN IF NOT EXISTS age UInt32 DEFAULT 0;
+ALTER TABLE standalone_table ADD COLUMN IF NOT EXISTS age UInt32 DEFAULT 0;

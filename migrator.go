@@ -157,6 +157,11 @@ func (m *Migrator) down(ctx context.Context, target uint64, limit int) error {
 
 		if !migration.Source.HasDown() {
 			log.Printf("Skipping migration %d: %s (forward-only, no down defined)", migration.Version, migration.Description)
+			// When a limit is set (Down command), this is the one migration we
+			// attempted — stop here instead of falling through to earlier migrations.
+			if limit > 0 {
+				break
+			}
 			continue
 		}
 

@@ -10,18 +10,25 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	intnlclickhouse "github.com/arsura/clicko/internal/clickhouse"
+	ch "github.com/arsura/clicko/internal/clickhouse"
 	"github.com/stretchr/testify/require"
 )
 
 const (
-	testURI             = "clickhouse://default:@localhost:29000/default"
-	migrationCluster    = "migration"
-	dataCluster         = "dev"
-	customEngine        = "ReplicatedMergeTree('/clickhouse/migration/tables/all/{database}/{table}', '{replica}')"
-	insertQuorum        = "4"
-	clusterTableName    = "cluster_migration_versions"
-	standaloneTableName = "standalone_migration_versions"
+	testURI          = "clickhouse://default:@localhost:29000/default"
+	migrationCluster = "migration"
+	dataCluster      = "dev"
+	customEngine     = "ReplicatedMergeTree('/clickhouse/migration/tables/all/{database}/{table}', '{replica}')"
+	insertQuorum     = "4"
+
+	testClusterMigrationTable              = "cluster_migration_versions"
+	testStandaloneMigrationTable           = "standalone_migration_versions"
+	testForwardOnlyMigrationTable          = "forward_only_migration_versions"
+	testDefaultEngineClusterMigrationTable = "default_engine_cluster_migration_versions"
+
+	clusterDataTable     = "cluster_table"
+	standaloneDataTable  = "standalone_table"
+	forwardOnlyDataTable = "forward_only_table"
 )
 
 // flagsUsage is the shared flags section that appears in every usage context.
@@ -118,7 +125,7 @@ func buildCLI(t *testing.T) string {
 func dialClickHouse(t *testing.T) (clickhouse.Conn, func() error) {
 	t.Helper()
 
-	conn, cleanup, err := intnlclickhouse.Dial(context.Background(), testURI)
+	conn, cleanup, err := ch.Dial(context.Background(), testURI)
 	require.NoError(t, err)
 
 	return conn, cleanup
@@ -139,7 +146,7 @@ func cliArgs(migrationsDir string, command ...string) []string {
 		"--cluster", migrationCluster,
 		"--insert-quorum", insertQuorum,
 		"--engine", customEngine,
-		"--table", clusterTableName,
+		"--table", testClusterMigrationTable,
 	)
 	return args
 }
@@ -149,7 +156,17 @@ func standaloneCliArgs(migrationsDir string, command ...string) []string {
 	args := append(command,
 		"--uri", testURI,
 		"--dir", migrationsDir,
-		"--table", standaloneTableName,
+		"--table", testStandaloneMigrationTable,
+	)
+	return args
+}
+
+// forwardOnlyCliArgs returns CLI flags for the forward-only migration test suite.
+func forwardOnlyCliArgs(migrationsDir string, command ...string) []string {
+	args := append(command,
+		"--uri", testURI,
+		"--dir", migrationsDir,
+		"--table", testForwardOnlyMigrationTable,
 	)
 	return args
 }
@@ -185,7 +202,7 @@ func queryAppliedMigrations(t *testing.T, conn clickhouse.Conn) []appliedMigrati
 	t.Helper()
 
 	rows, err := conn.Query(context.Background(),
-		"SELECT version, description, applied_at FROM "+clusterTableName+" ORDER BY version")
+		"SELECT version, description, applied_at FROM "+testClusterMigrationTable+" ORDER BY version")
 	require.NoError(t, err)
 	defer rows.Close()
 

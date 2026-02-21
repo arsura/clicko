@@ -1,0 +1,1 @@
+ALTER TABLE forward_only_table ADD COLUMN IF NOT EXISTS age UInt32 DEFAULT 0;
