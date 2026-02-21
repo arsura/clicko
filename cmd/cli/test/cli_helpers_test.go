@@ -3,7 +3,6 @@ package cli_test
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -133,15 +132,16 @@ func testURIWithDB(dbName string) string {
 	return fmt.Sprintf("clickhouse://default:@localhost:29000/%s", dbName)
 }
 
-// createTestDB creates a uniquely named isolated database for a single test
-// case and returns its name. The name is randomised so each test gets a fresh
-// namespace without any cleanup step — the whole environment is torn down via
-// docker-compose anyway. Pass a non-empty onCluster to propagate the CREATE
-// across a ClickHouse cluster.
+// createTestDB creates an isolated database for a single test case and returns
+// its name. The name encodes the test name and a Unix timestamp so that
+// databases left in ClickHouse can be traced back to the exact test and run
+// that created them. Pass a non-empty onCluster to propagate the CREATE across
+// a ClickHouse cluster.
 func createTestDB(t *testing.T, conn clickhouse.Conn, onCluster string) string {
 	t.Helper()
 
-	dbName := fmt.Sprintf("clicko_test_%08x", rand.Uint32())
+	safeName := testDBNameSanitizeRe.ReplaceAllString(t.Name(), "_")
+	dbName := fmt.Sprintf("clicko_%s_%d", safeName, time.Now().Unix())
 
 	q := "CREATE DATABASE IF NOT EXISTS " + dbName
 	if onCluster != "" {
@@ -234,6 +234,8 @@ func assertAppliedMigrations(t *testing.T, actual []appliedMigration, expected [
 }
 
 var (
+	testDBNameSanitizeRe = regexp.MustCompile(`/+`)
+
 	logTimestampRe    = regexp.MustCompile(`\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} `)
 	okDurationRe      = regexp.MustCompile(`OK \([^)]+\)`)
 	statusTimestampRe = regexp.MustCompile(`\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}`)
