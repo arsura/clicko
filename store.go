@@ -87,7 +87,7 @@ func (s *store) EnsureTable(ctx context.Context) error {
 	createStmt += fmt.Sprintf(` (
 		version UInt64,
 		description String,
-		applied_at DateTime DEFAULT now()
+		applied_at DateTime64(6) DEFAULT now64(6)
 	) ENGINE = %s ORDER BY version`, engine)
 
 	return s.conn.Exec(ctx, createStmt)
