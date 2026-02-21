@@ -38,6 +38,10 @@ type StoreConfig struct {
 	InsertQuorum string
 }
 
+func (c StoreConfig) IsCluster() bool {
+	return c.Cluster != ""
+}
+
 // NewStore creates a Store backed by the given ClickHouse connection.
 // Returns an error if any config value fails validation.
 func NewStore(conn clickhouse.Conn, config StoreConfig) (Store, error) {
@@ -64,14 +68,14 @@ func NewStore(conn clickhouse.Conn, config StoreConfig) (Store, error) {
 func (s *store) EnsureTable(ctx context.Context) error {
 	createStmt := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s", s.config.TableName)
 
-	if s.config.Cluster != "" {
+	if s.config.IsCluster() {
 		createStmt += fmt.Sprintf(" ON CLUSTER `%s`", s.config.Cluster)
 	}
 
 	engine := defaultMergeTreeEngine
 	if s.config.CustomEngine != "" {
 		engine = s.config.CustomEngine
-	} else if s.config.Cluster != "" {
+	} else if s.config.IsCluster() {
 		engine = defaultClusterEngine
 	}
 
@@ -112,7 +116,7 @@ func (s *store) GetAppliedVersions(ctx context.Context) (map[uint64]*Migration, 
 // For cluster mode, insert_quorum is passed via context settings
 // because the native ClickHouse driver does not support inline SETTINGS in INSERT.
 func (s *store) Add(ctx context.Context, version uint64, description string) error {
-	if s.config.Cluster != "" && s.config.InsertQuorum != "" {
+	if s.config.IsCluster() && s.config.InsertQuorum != "" {
 		ctx = clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{
 			"insert_quorum":          s.config.InsertQuorum,
 			"insert_quorum_parallel": 0,
@@ -131,7 +135,7 @@ func (s *store) Remove(ctx context.Context, version uint64) error {
 	}))
 
 	deleteStmt := fmt.Sprintf("ALTER TABLE %s", s.config.TableName)
-	if s.config.Cluster != "" {
+	if s.config.IsCluster() {
 		deleteStmt += fmt.Sprintf(" ON CLUSTER `%s`", s.config.Cluster)
 	}
 

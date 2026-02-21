@@ -47,7 +47,7 @@ func (s *CLIClusterSuite) SetupTest() {
 // cleanup drops test tables and removes any orphaned ZooKeeper replica
 // entries that ClickHouse may leave behind after an asynchronous DROP.
 // test_cluster_migration is created by migration SQL on cluster "dev",
-// while the tracking table uses the "all-replicated" cluster.
+// while the tracking table uses the "migration" cluster.
 func (s *CLIClusterSuite) cleanup() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

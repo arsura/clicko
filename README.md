@@ -96,8 +96,8 @@ clicko \
 clicko \
   --uri "clickhouse://default:@localhost:29000/default" \
   --dir ./migrations \
-  --cluster "all-replicated" \
-  --engine "ReplicatedMergeTree('/clickhouse/all-replicated/tables/all/{database}/{table}', '{replica}')" \
+  --cluster "migration" \
+  --engine "ReplicatedMergeTree('/clickhouse/migration/tables/all/{database}/{table}', '{replica}')" \
   --insert-quorum 4 \
   up
 ```

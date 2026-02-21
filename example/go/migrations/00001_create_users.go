@@ -13,16 +13,16 @@ func init() {
 
 func upCreateUsers(ctx context.Context, conn clickhouse.Conn) error {
 	return conn.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS users (
+		CREATE TABLE IF NOT EXISTS users ON CLUSTER dev (
 			id          UInt64,
 			name        String,
 			email       String,
 			created_at  DateTime DEFAULT now()
-		) ENGINE = MergeTree()
+		) ENGINE = ReplicatedMergeTree
 		ORDER BY id
 	`)
 }
 
 func downCreateUsers(ctx context.Context, conn clickhouse.Conn) error {
-	return conn.Exec(ctx, `DROP TABLE IF EXISTS users`)
+	return conn.Exec(ctx, `DROP TABLE IF EXISTS users ON CLUSTER dev`)
 }

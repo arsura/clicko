@@ -16,9 +16,9 @@ import (
 
 const (
 	testURI             = "clickhouse://default:@localhost:29000/default"
-	migrationCluster    = "all-replicated"
+	migrationCluster    = "migration"
 	dataCluster         = "dev"
-	customEngine        = "ReplicatedMergeTree('/clickhouse/all-replicated/tables/all/{database}/{table}', '{replica}')"
+	customEngine        = "ReplicatedMergeTree('/clickhouse/migration/tables/all/{database}/{table}', '{replica}')"
 	insertQuorum        = "4"
 	clusterTableName    = "cluster_migration_versions"
 	standaloneTableName = "standalone_migration_versions"

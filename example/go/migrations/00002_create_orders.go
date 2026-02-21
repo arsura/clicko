@@ -13,17 +13,17 @@ func init() {
 
 func upCreateOrders(ctx context.Context, conn clickhouse.Conn) error {
 	return conn.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS orders (
+		CREATE TABLE IF NOT EXISTS orders ON CLUSTER dev (
 			id          UInt64,
 			user_id     UInt64,
 			amount      Decimal64(2),
 			status      LowCardinality(String),
 			created_at  DateTime DEFAULT now()
-		) ENGINE = MergeTree()
+		) ENGINE = ReplicatedMergeTree
 		ORDER BY (user_id, id)
 	`)
 }
 
 func downCreateOrders(ctx context.Context, conn clickhouse.Conn) error {
-	return conn.Exec(ctx, `DROP TABLE IF EXISTS orders`)
+	return conn.Exec(ctx, `DROP TABLE IF EXISTS orders ON CLUSTER dev	`)
 }

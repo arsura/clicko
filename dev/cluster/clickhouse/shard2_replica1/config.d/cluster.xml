@@ -25,7 +25,7 @@
         </replica>
       </shard>
     </dev>
-    <all-replicated>
+    <migration>
       <shard>
         <internal_replication>true</internal_replication>
         <replica>
@@ -45,7 +45,7 @@
           <port>9000</port>
         </replica>
       </shard>
-    </all-replicated>
+    </migration>
   </remote_servers>
   <distributed_ddl>
     <path>/clickhouse/task_queue/ddl</path>

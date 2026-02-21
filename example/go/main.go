@@ -18,7 +18,6 @@ func main() {
 
 	uri := "clickhouse://default:@localhost:29000/default"
 
-	// 1. Connect to ClickHouse
 	opts, err := clickhouse.ParseDSN(uri)
 	if err != nil {
 		fatal(err)
@@ -32,18 +31,16 @@ func main() {
 	}
 	defer conn.Close()
 
-	// 2. Create migrator
 	migrator, err := clicko.New(conn, clicko.StoreConfig{
-		TableName:    "migration_versions_go",
-		Cluster:      "all-replicated",
-		CustomEngine: "ReplicatedMergeTree('/clickhouse/all-replicated/table/all/{database}/{table}', '{replica}')",
+		TableName:    "migration_versions",
+		Cluster:      "migration",
+		CustomEngine: "ReplicatedMergeTree('/clickhouse/migration/table/all/{database}/{table}', '{replica}')",
 		InsertQuorum: "4",
 	})
 	if err != nil {
 		fatal(err)
 	}
 
-	// 4. Run command based on first argument
 	cmd := "up"
 	if len(os.Args) > 1 {
 		cmd = os.Args[1]
