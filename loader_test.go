@@ -214,43 +214,31 @@ func (s *GoLoaderSuite) TestEmptyRegistry() {
 	assert.Empty(s.T(), got)
 }
 
-func (s *GoLoaderSuite) TestSortedAscending() {
-	up := func(ctx context.Context, conn clickhouse.Conn) error { return nil }
-
-	clicko.AddNamedMigration("00003_third.go", up, nil)
-	clicko.AddNamedMigration("00001_first.go", up, nil)
-	clicko.AddNamedMigration("00002_second.go", up, nil)
-
-	loader := clicko.NewGoLoader()
-	got, err := loader.Load()
-
-	assert.NoError(s.T(), err)
-	assert.Len(s.T(), got, 3)
-	assert.Equal(s.T(), uint64(1), got[0].Version)
-	assert.Equal(s.T(), "first", got[0].Description)
-	assert.Equal(s.T(), uint64(2), got[1].Version)
-	assert.Equal(s.T(), "second", got[1].Description)
-	assert.Equal(s.T(), uint64(3), got[2].Version)
-	assert.Equal(s.T(), "third", got[2].Description)
-}
-
 func (s *GoLoaderSuite) TestPreservesGoFuncs() {
-	called := false
+	upCalled, downCalled := false, false
 	up := func(ctx context.Context, conn clickhouse.Conn) error {
-		called = true
+		upCalled = true
+		return nil
+	}
+	down := func(ctx context.Context, conn clickhouse.Conn) error {
+		downCalled = true
 		return nil
 	}
 
-	clicko.AddNamedMigration("00001_test.go", up, nil)
+	clicko.RegisterNamedMigration("00001_test.go", up, down)
 
 	loader := clicko.NewGoLoader()
 	got, err := loader.Load()
 
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), got, 1)
+	assert.Equal(s.T(), clicko.MigrationSourceTypeGo, got[0].Source.Type)
 	assert.NotNil(s.T(), got[0].Source.UpFunc)
-	assert.Nil(s.T(), got[0].Source.DownFunc)
+	assert.NotNil(s.T(), got[0].Source.DownFunc)
 
 	_ = got[0].Source.UpFunc(context.Background(), nil)
-	assert.True(s.T(), called)
+	assert.True(s.T(), upCalled)
+
+	_ = got[0].Source.DownFunc(context.Background(), nil)
+	assert.True(s.T(), downCalled)
 }

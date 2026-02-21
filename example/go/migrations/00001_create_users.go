@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	clicko.AddMigration(upCreateUsers, downCreateUsers)
+	clicko.RegisterMigration(upCreateUsers, downCreateUsers)
 }
 
 func upCreateUsers(ctx context.Context, conn clickhouse.Conn) error {

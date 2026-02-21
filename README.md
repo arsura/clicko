@@ -183,7 +183,8 @@ Integration tests skip automatically if ClickHouse is not running.
 - [x] Unit tests (loader) + Integration tests (CLI + ClickHouse cluster)
 - [x] SQL injection prevention
 - [x] Vulnerability check
-- [ ] Go integration
+- [x] Go integration
+- 
 - [ ] Easy Go interface
 
 ## License

@@ -14,22 +14,25 @@ var (
 	globalGoMigrations = make(map[uint64]*Migration)
 )
 
-// AddMigration registers a Go migration using the caller's filename to
+// RegisterMigration registers a Go migration using the caller's filename to
 // derive the version number. The filename must start with a numeric prefix
 // (e.g. 20250317141923_create_users.go).
 //
 // Panics if the version conflicts with an already-registered migration.
-func AddMigration(up, down GoMigrationFunc) {
+func RegisterMigration(up, down GoMigrationFunc) {
 	_, filename, _, _ := runtime.Caller(1)
-	AddNamedMigration(filename, up, down)
+	RegisterNamedMigration(filename, up, down)
 }
 
-// AddNamedMigration registers a Go migration with an explicit filename.
+// RegisterNamedMigration registers a Go migration with an explicit filename.
 // The version is parsed from the leading numeric component of the base
 // filename (e.g. "20250317141923_create_users.go" → version 20250317141923).
 //
 // Panics if the version conflicts with an already-registered migration.
-func AddNamedMigration(filename string, up, down GoMigrationFunc) {
+func RegisterNamedMigration(filename string, up, down GoMigrationFunc) {
+	if up == nil {
+		panic(fmt.Sprintf("failed to add migration %q: up function must not be nil", filename))
+	}
 	version, description := parseFilename(filename)
 
 	mu.Lock()

@@ -21,7 +21,7 @@ type GoMigrationFunc func(ctx context.Context, conn clickhouse.Conn) error
 type Migration struct {
 	Version     uint64
 	Description string
-	AppliedAt   time.Time // Nil if not applied
+	AppliedAt   time.Time
 	Source      MigrationSource
 }
 
@@ -34,6 +34,19 @@ type MigrationSource struct {
 	DownSQL  string
 	UpFunc   GoMigrationFunc
 	DownFunc GoMigrationFunc
+}
+
+// HasDown reports whether this migration source has a down (rollback) definition.
+// Migrations without a down definition are treated as forward-only and skipped
+// during rollback operations without error.
+func (s MigrationSource) HasDown() bool {
+	switch s.Type {
+	case MigrationSourceTypeGo:
+		return s.DownFunc != nil
+	case MigrationSourceTypeSQL:
+		return s.DownSQL != ""
+	}
+	return false
 }
 
 type MigrationSourceType string

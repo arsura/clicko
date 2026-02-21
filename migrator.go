@@ -11,13 +11,6 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
 
-// TODO: ClickHouse has no transactions, so migration SQL and version tracking
-// cannot be atomic. If store.Add/Remove fails after SQL succeeds, the state
-// becomes inconsistent. Planned improvements:
-//   - Retry store operations on transient errors.
-//   - Log a clear, actionable error message on permanent failure.
-//   - Add "force-add" / "force-remove" CLI commands for manual recovery.
-
 // Migrator orchestrates loading migrations (SQL files or Go functions),
 // comparing them against the applied state in ClickHouse, and executing them.
 type Migrator struct {
@@ -26,6 +19,8 @@ type Migrator struct {
 	conn   clickhouse.Conn
 }
 
+// NewMigrator creates a Migrator with the given connection, loader, and store.
+// For most use cases, prefer New, which wires up the store and Go loader automatically.
 func NewMigrator(conn clickhouse.Conn, loader Loader, store Store) *Migrator {
 	return &Migrator{
 		conn:   conn,
@@ -83,6 +78,8 @@ func (m *Migrator) up(ctx context.Context, target uint64) error {
 	return nil
 }
 
+// loadState ensures the tracking table exists, then returns all known migrations
+// from the loader alongside a map of already-applied versions keyed by version number.
 func (m *Migrator) loadState(ctx context.Context) ([]*Migration, map[uint64]*Migration, error) {
 	if err := m.store.EnsureTable(ctx); err != nil {
 		return nil, nil, fmt.Errorf("failed to ensure migration table: %w", err)
@@ -101,6 +98,7 @@ func (m *Migrator) loadState(ctx context.Context) ([]*Migration, map[uint64]*Mig
 	return migrations, applied, nil
 }
 
+// applyUp executes the up direction of a migration and records it as applied in the store.
 func (m *Migrator) applyUp(ctx context.Context, migration *Migration) error {
 	switch migration.Source.Type {
 	case MigrationSourceTypeGo:
@@ -157,6 +155,11 @@ func (m *Migrator) down(ctx context.Context, target uint64, limit int) error {
 			break
 		}
 
+		if !migration.Source.HasDown() {
+			log.Printf("Skipping migration %d: %s (forward-only, no down defined)", migration.Version, migration.Description)
+			continue
+		}
+
 		log.Printf("Reverting migration %d: %s", migration.Version, migration.Description)
 		start := time.Now()
 
@@ -180,6 +183,7 @@ func (m *Migrator) down(ctx context.Context, target uint64, limit int) error {
 	return nil
 }
 
+// applyDown executes the down direction of a migration and removes it from the store.
 func (m *Migrator) applyDown(ctx context.Context, migration *Migration) error {
 	switch migration.Source.Type {
 	case MigrationSourceTypeGo:

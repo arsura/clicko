@@ -130,11 +130,12 @@ func (l *sqlLoader) Load() ([]*Migration, error) {
 type goLoader struct{}
 
 // NewGoLoader returns a Loader that reads migrations from the global Go
-// migration registry populated by AddMigration / AddNamedMigration.
+// migration registry populated by RegisterMigration / RegisterNamedMigration.
 func NewGoLoader() Loader {
 	return &goLoader{}
 }
 
+// Load returns all registered Go migrations sorted by version in ascending order.
 func (l *goLoader) Load() ([]*Migration, error) {
 	registered := getGlobalGoMigrations()
 

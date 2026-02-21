@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	clicko.AddMigration(upAddUsersAge, nil)
+	clicko.RegisterMigration(upAddUsersAge, nil)
 }
 
 func upAddUsersAge(ctx context.Context, conn clickhouse.Conn) error {
