@@ -1,11 +1,8 @@
 package cli_test
 
 import (
-	"context"
-	"fmt"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/stretchr/testify/require"
@@ -23,6 +20,12 @@ type CLIClusterSuite struct {
 	conn                  clickhouse.Conn
 	clickHouseCleanupFunc func() error
 	migrationsDir         string
+
+	// testDBName and testDBURI are set fresh for every test case so that each
+	// test operates on an entirely isolated database. No cleanup is needed
+	// between tests — the whole environment is torn down via docker-compose.
+	testDBName string
+	testDBURI  string
 }
 
 func TestCLIClusterSuite(t *testing.T) {
@@ -36,54 +39,12 @@ func (s *CLIClusterSuite) SetupSuite() {
 }
 
 func (s *CLIClusterSuite) TearDownSuite() {
-	s.cleanup()
 	s.clickHouseCleanupFunc()
 }
 
 func (s *CLIClusterSuite) SetupTest() {
-	s.cleanup()
-}
-
-// cleanup drops test tables and removes any orphaned ZooKeeper replica
-// entries that ClickHouse may leave behind after an asynchronous DROP.
-// cluster_table is created by migration SQL on cluster "dev",
-// while the tracking table uses the "migration" cluster.
-func (s *CLIClusterSuite) cleanup() {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	err := s.conn.Exec(ctx, "DROP TABLE IF EXISTS "+clusterDataTable+" ON CLUSTER `"+dataCluster+"` SYNC")
-	require.NoError(s.T(), err)
-	err = s.conn.Exec(ctx, "DROP TABLE IF EXISTS `"+testClusterMigrationTable+"` ON CLUSTER `"+migrationCluster+"` SYNC")
-	require.NoError(s.T(), err)
-	err = s.conn.Exec(ctx, "DROP TABLE IF EXISTS `"+testDefaultEngineClusterMigrationTable+"` ON CLUSTER `"+migrationCluster+"` SYNC")
-	require.NoError(s.T(), err)
-
-	s.dropOrphanedReplicas(ctx, "/clickhouse/tables/1/"+clusterDataTable)
-	s.dropOrphanedReplicas(ctx, "/clickhouse/tables/2/"+clusterDataTable)
-
-	s.dropOrphanedReplicas(ctx, "/clickhouse/dev/table/1/default/"+testDefaultEngineClusterMigrationTable)
-	s.dropOrphanedReplicas(ctx, "/clickhouse/dev/table/2/default/"+testDefaultEngineClusterMigrationTable)
-}
-
-// dropOrphanedReplicas queries ZooKeeper for any remaining replica entries
-// under the given path and removes them with SYSTEM DROP REPLICA.
-func (s *CLIClusterSuite) dropOrphanedReplicas(ctx context.Context, zkPath string) {
-	rows, err := s.conn.Query(ctx,
-		"SELECT name FROM system.zookeeper WHERE path = $1",
-		zkPath+"/replicas")
-	require.NoError(s.T(), err)
-	defer rows.Close()
-
-	for rows.Next() {
-		var replica string
-		if err := rows.Scan(&replica); err != nil {
-			continue
-		}
-		err = s.conn.Exec(ctx, fmt.Sprintf(
-			"SYSTEM DROP REPLICA '%s' FROM ZKPATH '%s'", replica, zkPath))
-		require.NoError(s.T(), err)
-	}
+	s.testDBName = createTestDB(s.T(), s.conn, migrationCluster)
+	s.testDBURI = testURIWithDB(s.testDBName)
 }
 
 // ---------------------------------------------------------------------------
@@ -91,7 +52,7 @@ func (s *CLIClusterSuite) dropOrphanedReplicas(ctx context.Context, zkPath strin
 // ---------------------------------------------------------------------------
 
 func (s *CLIClusterSuite) TestUpAppliesAllMigrations() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -101,7 +62,7 @@ func (s *CLIClusterSuite) TestUpAppliesAllMigrations() {
 		"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrations(s.T(), s.conn)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testClusterMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
 
@@ -113,7 +74,7 @@ var expectedMigrations = []appliedMigration{
 }
 
 func (s *CLIClusterSuite) TestUpIdempotent() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "first up: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -123,12 +84,12 @@ func (s *CLIClusterSuite) TestUpIdempotent() {
 		"OK\n",
 		normalizeOutput(out))
 
-	out, err = runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up")...)
+	out, err = runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "second up: %s", out)
 	require.Equal(s.T(), "No pending migrations to apply\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrations(s.T(), s.conn)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testClusterMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
 
@@ -137,7 +98,7 @@ func (s *CLIClusterSuite) TestUpIdempotent() {
 // ---------------------------------------------------------------------------
 
 func (s *CLIClusterSuite) TestUpToTargetVersion() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up-to", "2")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "up-to", "2")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -145,12 +106,12 @@ func (s *CLIClusterSuite) TestUpToTargetVersion() {
 		"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrations(s.T(), s.conn)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testClusterMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations[:2])
 }
 
 func (s *CLIClusterSuite) TestUpToAlreadyApplied() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -160,17 +121,17 @@ func (s *CLIClusterSuite) TestUpToAlreadyApplied() {
 		"OK\n",
 		normalizeOutput(out))
 
-	out, err = runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up-to", "2")...)
+	out, err = runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "up-to", "2")...)
 	require.NoError(s.T(), err, "up-to: %s", out)
 	require.Equal(s.T(), "No pending migrations to apply\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrations(s.T(), s.conn)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testClusterMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
 
 func (s *CLIClusterSuite) TestUpToVersionBeyondMax() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up-to", "999")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "up-to", "999")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -180,7 +141,7 @@ func (s *CLIClusterSuite) TestUpToVersionBeyondMax() {
 		"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrations(s.T(), s.conn)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testClusterMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
 
@@ -189,7 +150,7 @@ func (s *CLIClusterSuite) TestUpToVersionBeyondMax() {
 // ---------------------------------------------------------------------------
 
 func (s *CLIClusterSuite) TestDownRevertsLastMigration() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -199,18 +160,18 @@ func (s *CLIClusterSuite) TestDownRevertsLastMigration() {
 		"OK\n",
 		normalizeOutput(out))
 
-	out, err = runCLI(s.binaryPath, cliArgs(s.migrationsDir, "down")...)
+	out, err = runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "down")...)
 	require.NoError(s.T(), err, "down: %s", out)
 	require.Equal(s.T(), "Reverting migration 3: add age column\n"+
 		"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrations(s.T(), s.conn)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testClusterMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations[:2])
 }
 
 func (s *CLIClusterSuite) TestDownNothingToRevert() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "down")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "down")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(), "No migrations to revert\n",
 		normalizeOutput(out))
@@ -221,7 +182,7 @@ func (s *CLIClusterSuite) TestDownNothingToRevert() {
 // ---------------------------------------------------------------------------
 
 func (s *CLIClusterSuite) TestDownToTargetVersion() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -231,7 +192,7 @@ func (s *CLIClusterSuite) TestDownToTargetVersion() {
 		"OK\n",
 		normalizeOutput(out))
 
-	out, err = runCLI(s.binaryPath, cliArgs(s.migrationsDir, "down-to", "1")...)
+	out, err = runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "down-to", "1")...)
 	require.NoError(s.T(), err, "down-to: %s", out)
 	require.Equal(s.T(), "Reverting migration 3: add age column\n"+
 		"OK\n"+
@@ -239,12 +200,12 @@ func (s *CLIClusterSuite) TestDownToTargetVersion() {
 		"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrations(s.T(), s.conn)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testClusterMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations[:1])
 }
 
 func (s *CLIClusterSuite) TestDownToZeroRevertsAll() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -254,7 +215,7 @@ func (s *CLIClusterSuite) TestDownToZeroRevertsAll() {
 		"OK\n",
 		normalizeOutput(out))
 
-	out, err = runCLI(s.binaryPath, cliArgs(s.migrationsDir, "down-to", "0")...)
+	out, err = runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "down-to", "0")...)
 	require.NoError(s.T(), err, "down-to: %s", out)
 	require.Equal(s.T(), "Reverting migration 3: add age column\n"+
 		"OK\n"+
@@ -264,25 +225,25 @@ func (s *CLIClusterSuite) TestDownToZeroRevertsAll() {
 		"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrations(s.T(), s.conn)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testClusterMigrationTable)
 	require.Empty(s.T(), actual)
 }
 
 func (s *CLIClusterSuite) TestDownToVersionBeyondMax() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 
-	out, err = runCLI(s.binaryPath, cliArgs(s.migrationsDir, "down-to", "999")...)
+	out, err = runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "down-to", "999")...)
 	require.NoError(s.T(), err, "down-to: %s", out)
 	require.Equal(s.T(), "No migrations to revert\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrations(s.T(), s.conn)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testClusterMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
 
 func (s *CLIClusterSuite) TestDownToOnEmptyState() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "down-to", "0")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "down-to", "0")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(), "No migrations to revert\n",
 		normalizeOutput(out))
@@ -293,7 +254,7 @@ func (s *CLIClusterSuite) TestDownToOnEmptyState() {
 // ---------------------------------------------------------------------------
 
 func (s *CLIClusterSuite) TestResetRevertsAllMigrations() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -303,7 +264,7 @@ func (s *CLIClusterSuite) TestResetRevertsAllMigrations() {
 		"OK\n",
 		normalizeOutput(out))
 
-	out, err = runCLI(s.binaryPath, cliArgs(s.migrationsDir, "reset")...)
+	out, err = runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "reset")...)
 	require.NoError(s.T(), err, "reset: %s", out)
 	require.Equal(s.T(), "Reverting migration 3: add age column\n"+
 		"OK\n"+
@@ -313,12 +274,12 @@ func (s *CLIClusterSuite) TestResetRevertsAllMigrations() {
 		"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrations(s.T(), s.conn)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testClusterMigrationTable)
 	require.Empty(s.T(), actual)
 }
 
 func (s *CLIClusterSuite) TestResetOnEmptyState() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "reset")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "reset")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(), "No migrations to revert\n",
 		normalizeOutput(out))
@@ -332,7 +293,7 @@ const statusHeader = "Version    Description               Status     Applied At
 	"----------------------------------------------------------------------\n"
 
 func (s *CLIClusterSuite) TestStatusAllPending() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "status")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "status")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(), statusHeader+
 		"1          create test table         Pending    \n"+
@@ -342,10 +303,10 @@ func (s *CLIClusterSuite) TestStatusAllPending() {
 }
 
 func (s *CLIClusterSuite) TestStatusAllApplied() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 
-	out, err = runCLI(s.binaryPath, cliArgs(s.migrationsDir, "status")...)
+	out, err = runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "status")...)
 	require.NoError(s.T(), err, "status: %s", out)
 	require.Equal(s.T(), statusHeader+
 		"1          create test table         Applied    APPLIED_AT         \n"+
@@ -355,10 +316,10 @@ func (s *CLIClusterSuite) TestStatusAllApplied() {
 }
 
 func (s *CLIClusterSuite) TestStatusPartiallyApplied() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up-to", "2")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "up-to", "2")...)
 	require.NoError(s.T(), err, "up-to: %s", out)
 
-	out, err = runCLI(s.binaryPath, cliArgs(s.migrationsDir, "status")...)
+	out, err = runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "status")...)
 	require.NoError(s.T(), err, "status: %s", out)
 	require.Equal(s.T(), statusHeader+
 		"1          create test table         Applied    APPLIED_AT         \n"+
@@ -372,7 +333,7 @@ func (s *CLIClusterSuite) TestStatusPartiallyApplied() {
 // ---------------------------------------------------------------------------
 
 func (s *CLIClusterSuite) TestUpThenDownThenUpAgain() {
-	out, err := runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "first up: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -382,19 +343,19 @@ func (s *CLIClusterSuite) TestUpThenDownThenUpAgain() {
 		"OK\n",
 		normalizeOutput(out))
 
-	out, err = runCLI(s.binaryPath, cliArgs(s.migrationsDir, "down")...)
+	out, err = runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "down")...)
 	require.NoError(s.T(), err, "down: %s", out)
 	require.Equal(s.T(), "Reverting migration 3: add age column\n"+
 		"OK\n",
 		normalizeOutput(out))
 
-	out, err = runCLI(s.binaryPath, cliArgs(s.migrationsDir, "up")...)
+	out, err = runCLI(s.binaryPath, cliArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "second up: %s", out)
 	require.Equal(s.T(), "Applying migration 3: add age column\n"+
 		"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrations(s.T(), s.conn)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testClusterMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
 
@@ -407,7 +368,7 @@ func (s *CLIClusterSuite) TestUpThenDownThenUpAgain() {
 func (s *CLIClusterSuite) TestUpWithDefaultClusterEngine() {
 	args := []string{
 		"up",
-		"--uri", testURI,
+		"--uri", s.testDBURI,
 		"--dir", s.migrationsDir,
 		"--cluster", migrationCluster,
 		"--table", testDefaultEngineClusterMigrationTable,
@@ -426,7 +387,7 @@ func (s *CLIClusterSuite) TestUpWithDefaultClusterEngine() {
 			"OK\n",
 		normalizeOutput(out))
 
-	actual := queryAppliedMigrationsFrom(s.T(), s.conn, testDefaultEngineClusterMigrationTable)
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testDefaultEngineClusterMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
 
@@ -435,7 +396,7 @@ func (s *CLIClusterSuite) TestUpWithDefaultClusterEngine() {
 // ---------------------------------------------------------------------------
 
 func (s *CLIClusterSuite) TestInvalidMigrationsDir() {
-	out, err := runCLI(s.binaryPath, cliArgs("/nonexistent/path", "up")...)
+	out, err := runCLI(s.binaryPath, cliArgs(s.testDBURI, "/nonexistent/path", "up")...)
 	require.Error(s.T(), err)
 	require.Equal(s.T(),
 		"failed to load migrations: failed to read migrations directory \"/nonexistent/path\": open /nonexistent/path: no such file or directory\n",

@@ -2,6 +2,8 @@ package cli_test
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -15,9 +17,8 @@ import (
 )
 
 const (
-	testURI          = "clickhouse://default:@localhost:29000/default"
+	testAdminURI     = "clickhouse://default:@localhost:29000/default"
 	migrationCluster = "migration"
-	dataCluster      = "dev"
 	customEngine     = "ReplicatedMergeTree('/clickhouse/migration/tables/all/{database}/{table}', '{replica}')"
 	insertQuorum     = "4"
 
@@ -25,10 +26,6 @@ const (
 	testStandaloneMigrationTable           = "standalone_migration_versions"
 	testForwardOnlyMigrationTable          = "forward_only_migration_versions"
 	testDefaultEngineClusterMigrationTable = "default_engine_cluster_migration_versions"
-
-	clusterDataTable     = "cluster_table"
-	standaloneDataTable  = "standalone_table"
-	forwardOnlyDataTable = "forward_only_table"
 )
 
 // flagsUsage is the shared flags section that appears in every usage context.
@@ -125,10 +122,35 @@ func buildCLI(t *testing.T) string {
 func dialClickHouse(t *testing.T) (clickhouse.Conn, func() error) {
 	t.Helper()
 
-	conn, cleanup, err := ch.Dial(context.Background(), testURI)
+	conn, cleanup, err := ch.Dial(context.Background(), testAdminURI)
 	require.NoError(t, err)
 
 	return conn, cleanup
+}
+
+// testURIWithDB returns a ClickHouse connection URI pointing to dbName.
+func testURIWithDB(dbName string) string {
+	return fmt.Sprintf("clickhouse://default:@localhost:29000/%s", dbName)
+}
+
+// createTestDB creates a uniquely named isolated database for a single test
+// case and returns its name. The name is randomised so each test gets a fresh
+// namespace without any cleanup step — the whole environment is torn down via
+// docker-compose anyway. Pass a non-empty onCluster to propagate the CREATE
+// across a ClickHouse cluster.
+func createTestDB(t *testing.T, conn clickhouse.Conn, onCluster string) string {
+	t.Helper()
+
+	dbName := fmt.Sprintf("clicko_test_%08x", rand.Uint32())
+
+	q := "CREATE DATABASE IF NOT EXISTS " + dbName
+	if onCluster != "" {
+		q += " ON CLUSTER `" + onCluster + "`"
+	}
+	err := conn.Exec(context.Background(), q)
+	require.NoError(t, err)
+
+	return dbName
 }
 
 // runCLI executes the CLI binary with the given arguments and returns combined output.
@@ -139,9 +161,9 @@ func runCLI(binaryPath string, args ...string) (string, error) {
 }
 
 // cliArgs returns the common flags for cluster mode with the given command prepended.
-func cliArgs(migrationsDir string, command ...string) []string {
+func cliArgs(uri, migrationsDir string, command ...string) []string {
 	args := append(command,
-		"--uri", testURI,
+		"--uri", uri,
 		"--dir", migrationsDir,
 		"--cluster", migrationCluster,
 		"--insert-quorum", insertQuorum,
@@ -152,9 +174,9 @@ func cliArgs(migrationsDir string, command ...string) []string {
 }
 
 // standaloneCliArgs returns the common flags for standalone (single node) mode.
-func standaloneCliArgs(migrationsDir string, command ...string) []string {
+func standaloneCliArgs(uri, migrationsDir string, command ...string) []string {
 	args := append(command,
-		"--uri", testURI,
+		"--uri", uri,
 		"--dir", migrationsDir,
 		"--table", testStandaloneMigrationTable,
 	)
@@ -162,9 +184,9 @@ func standaloneCliArgs(migrationsDir string, command ...string) []string {
 }
 
 // forwardOnlyCliArgs returns CLI flags for the forward-only migration test suite.
-func forwardOnlyCliArgs(migrationsDir string, command ...string) []string {
+func forwardOnlyCliArgs(uri, migrationsDir string, command ...string) []string {
 	args := append(command,
-		"--uri", testURI,
+		"--uri", uri,
 		"--dir", migrationsDir,
 		"--table", testForwardOnlyMigrationTable,
 	)
@@ -179,30 +201,12 @@ type appliedMigration struct {
 }
 
 // queryAppliedMigrationsFrom returns all rows from the given tracking table sorted by version ascending.
+// table may be a fully-qualified name (e.g. "dbname.tablename").
 func queryAppliedMigrationsFrom(t *testing.T, conn clickhouse.Conn, table string) []appliedMigration {
 	t.Helper()
 
 	rows, err := conn.Query(context.Background(),
 		"SELECT version, description, applied_at FROM "+table+" ORDER BY version")
-	require.NoError(t, err)
-	defer rows.Close()
-
-	var migrations []appliedMigration
-	for rows.Next() {
-		var m appliedMigration
-		require.NoError(t, rows.Scan(&m.Version, &m.Description, &m.AppliedAt))
-		migrations = append(migrations, m)
-	}
-
-	return migrations
-}
-
-// queryAppliedMigrations returns all rows from the default tracking table sorted by version ascending.
-func queryAppliedMigrations(t *testing.T, conn clickhouse.Conn) []appliedMigration {
-	t.Helper()
-
-	rows, err := conn.Query(context.Background(),
-		"SELECT version, description, applied_at FROM "+testClusterMigrationTable+" ORDER BY version")
 	require.NoError(t, err)
 	defer rows.Close()
 
