@@ -60,10 +60,10 @@ clicko --uri <uri> [flags] <command>
 | `--uri` | *(required)* | ClickHouse connection URI (e.g. `clickhouse://user:pass@host:9000/db`) |
 | `--dir` | `migrations` | Directory containing migration files |
 | `--table` | `migration_versions` | Migration tracking table name |
-| `--cluster` | — | ClickHouse cluster name (enables `ON CLUSTER`) |
-| `--engine` | — | Custom table engine for the tracking table |
-| `--insert-quorum` | — | Write quorum for cluster inserts (number or `"auto"`) |
-| `--help` | — | Show help |
+| `--cluster` |   | ClickHouse cluster name (enables `ON CLUSTER`) |
+| `--engine` |   | Custom table engine for the tracking table |
+| `--insert-quorum` |   | Write quorum for cluster inserts (number or `"auto"`) |
+| `--help` |   | Show help |
 
 ### Commands
 
