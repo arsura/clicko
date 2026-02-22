@@ -131,7 +131,7 @@ When your ClickHouse cluster has multiple shards, the data cluster (e.g. `dev`) 
 
 The solution is to define a **logical cluster** dedicated to migrations. This cluster puts **all replicas from every shard into a single shard**, so the migration tracking table replicates uniformly across the entire cluster.
 
-For example, the `dev/cluster` setup defines two clusters:
+For example, the [dev/cluster](https://github.com/arsura/clicko/tree/main/dev/cluster) setup defines two clusters:
 
 - `dev` — the data cluster with 2 shards x 2 replicas:
 
@@ -162,7 +162,7 @@ Your actual data migrations can still use `ON CLUSTER dev` inside the SQL files 
 
 ## Examples
 
-- [CLI example](example/clicko/README.md) — SQL file migrations via the CLI
+- [CLI example](example/cli/README.md) — SQL file migrations via the CLI
 - [Go example](example/go/README.md) — Go function migrations embedded in an application
 
 ## Development
