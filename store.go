@@ -36,11 +36,32 @@ type StoreConfig struct {
 	TableName    string
 	Cluster      string
 	CustomEngine string
+	// InsertQuorum controls the insert_quorum setting for migration writes in cluster mode.
+	// Set this to the total number of nodes in the cluster (shards × replicas per shard)
+	// so every node must acknowledge the write before it is considered successful.
+	// This is necessary because the migration table is replicated across all nodes via a single
+	// ZooKeeper path — a node that missed the write would report the migration as not applied.
+	// Accepts a positive integer (e.g. "6" for 3 shards × 2 replicas) or "auto".
+	// Has no effect when Cluster is not set.
+	// https://clickhouse.com/docs/operations/settings/settings#insert_quorum
 	InsertQuorum string
 }
 
 func (c StoreConfig) IsCluster() bool {
 	return c.Cluster != ""
+}
+
+// ResolveEngine returns the engine clause to use when creating the migration table.
+// Priority: CustomEngine > ReplicatedMergeTree (cluster, with warning) > MergeTree.
+func (c StoreConfig) ResolveEngine() string {
+	if c.CustomEngine != "" {
+		return c.CustomEngine
+	}
+	if c.IsCluster() {
+		log.Printf("WARNING: no custom engine specified for cluster mode; falling back to the default engine whose ZooKeeper path includes {shard}, which may result in separate replication groups per shard and inconsistent migration state across nodes — set a custom engine with a unified ZooKeeper path to avoid this")
+		return defaultClusterEngine
+	}
+	return defaultMergeTreeEngine
 }
 
 // NewStore creates a Store backed by the given ClickHouse connection.
@@ -73,22 +94,11 @@ func (s *store) EnsureTable(ctx context.Context) error {
 		createStmt += fmt.Sprintf(" ON CLUSTER `%s`", s.config.Cluster)
 	}
 
-	engine := defaultMergeTreeEngine
-
-	if s.config.IsCluster() {
-		if s.config.CustomEngine == "" {
-			log.Printf("WARNING: no custom engine specified for cluster mode; falling back to the default engine whose ZooKeeper path includes {shard}, which may result in separate replication groups per shard and inconsistent migration state across nodes — set a custom engine with a unified ZooKeeper path to avoid this")
-			engine = defaultClusterEngine
-		} else {
-			engine = s.config.CustomEngine
-		}
-	}
-
 	createStmt += fmt.Sprintf(` (
 		version UInt64,
 		description String,
 		applied_at DateTime64(6) DEFAULT now64(6)
-	) ENGINE = %s ORDER BY version`, engine)
+	) ENGINE = %s ORDER BY version`, s.config.ResolveEngine())
 
 	return s.conn.Exec(ctx, createStmt)
 }
