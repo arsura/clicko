@@ -13,15 +13,40 @@ A ClickHouse migration tool friendly for self-hosted sharded clusters, inspired 
 - **Native ClickHouse protocol** — Uses [clickhouse-go/v2](https://github.com/ClickHouse/clickhouse-go) with `clickhouse.Conn` (native interface)
 - **SQL and Go migrations** — Write migrations as plain `.sql` files or as Go functions.
 
-## Why Go integration?
-
-Besides the CLI, clicko can be embedded as a Go library. This lets you run migrations as part of your CI pipeline, write integration tests against a local cluster, and programmatically target different environments — no risky manual access to the cluster required.
-
 ## Installation
 
 ```bash
 go install github.com/arsura/clicko/cmd/clicko@latest
 ```
+
+## Migration files
+
+SQL migration files follow the naming convention:
+
+```
+{version}_{description}.{up|down}.sql
+```
+
+Example directory:
+
+```
+migrations/
+├── 00001_create_users.up.sql
+├── 00001_create_users.down.sql
+├── 00002_create_orders.up.sql
+├── 00002_create_orders.down.sql
+└── 00003_add_users_age_column.up.sql
+```
+
+## Recommendation: forward-only migrations
+
+clicko supports `down` migrations, but for ClickHouse in production you may want to avoid writing them altogether.
+
+ClickHouse tables tend to be large, and many DDL operations (like `DROP COLUMN` or `ALTER TABLE ... DELETE`) are executed as background mutations that can take a long time to complete and cannot be easily interrupted. Rolling back a migration by running a `down` file does not instantly undo the change — it queues another mutation on top, which can leave the cluster in an inconsistent state during the window between the two operations.
+
+A **forward-only** approach means every change is expressed as a new `up` migration. Instead of rolling back, you write a follow-up migration that corrects or reverts the intent. This keeps the migration history append-only, predictable, and safe to apply in automated pipelines.
+
+This is a recommendation, not a requirement. If your use case is well-suited to rollbacks (e.g. a small local cluster or a development environment), the `down` commands work fine.
 
 ## CLI usage
 
@@ -52,7 +77,7 @@ clicko --uri <uri> [flags] <command>
 | `reset` | Rollback all applied migrations |
 | `status` | Show migration status |
 
-## Example
+### Example
 
 ```bash
 clicko --uri "clickhouse://default:@localhost:9000/default" --dir migrations up
@@ -70,24 +95,9 @@ clicko \
   up
 ```
 
-## Migration files
+## Why Go integration?
 
-SQL migration files follow the naming convention:
-
-```
-{version}_{description}.{up|down}.sql
-```
-
-Example directory:
-
-```
-migrations/
-├── 00001_create_users.up.sql
-├── 00001_create_users.down.sql
-├── 00002_create_orders.up.sql
-├── 00002_create_orders.down.sql
-└── 00003_add_users_age_column.up.sql
-```
+Besides the CLI, clicko can be embedded as a Go library. This lets you run migrations as part of your CI pipeline, write integration tests against a local cluster, and programmatically target different environments — no risky manual access to the cluster required.
 
 ## Go library
 
@@ -114,11 +124,6 @@ migrator.Up(ctx)
 ```
 
 See [Go integration example](example/go/README.md) for the full walkthrough including Go function migrations with `clicko.RegisterMigration`.
-
-## Examples
-
-- [CLI example](example/clicko/README.md) — SQL file migrations via the CLI
-- [Go example](example/go/README.md) — Go function migrations embedded in an application
 
 ## Migrations on a sharded cluster
 
@@ -154,6 +159,11 @@ clicko \
 ```
 
 Your actual data migrations can still use `ON CLUSTER dev` inside the SQL files themselves.
+
+## Examples
+
+- [CLI example](example/clicko/README.md) — SQL file migrations via the CLI
+- [Go example](example/go/README.md) — Go function migrations embedded in an application
 
 ## Development
 
