@@ -1,4 +1,6 @@
-# clicko
+<p align="center">
+  <img src="assets/clicko_no_smoking.png" alt="clicko no smoking" width="500" />
+</p>
 
 [![Test](https://github.com/arsura/clicko/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/arsura/clicko/actions/workflows/test.yaml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/arsura/clicko)](https://goreportcard.com/report/github.com/arsura/clicko)
