@@ -23,6 +23,49 @@ func NewSQLLoader(dir string) Loader {
 	return &sqlLoader{dir: dir}
 }
 
+type sqlFileInfo struct {
+	version     uint64
+	description string
+	direction   string
+}
+
+// parseSQLFilename parses a SQL migration filename into its components.
+// Expected format: <version>_<description>.<up|down>.sql
+func parseSQLFilename(name string) (sqlFileInfo, error) {
+	parts := strings.Split(name, ".")
+	if len(parts) != 3 {
+		return sqlFileInfo{}, fmt.Errorf("invalid migration filename %q: expected <version>_<description>.<up|down>.sql", name)
+	}
+
+	direction := parts[1]
+	if direction != MigrationDirectionUp && direction != MigrationDirectionDown {
+		return sqlFileInfo{}, fmt.Errorf("invalid migration filename %q: direction must be \"up\" or \"down\", got %q", name, direction)
+	}
+
+	versionParts := strings.SplitN(parts[0], "_", 2)
+	version, err := strconv.ParseUint(versionParts[0], 10, 64)
+	if err != nil {
+		return sqlFileInfo{}, fmt.Errorf("invalid migration filename %q: version %q is not a valid number", name, versionParts[0])
+	}
+
+	description := ""
+	if len(versionParts) > 1 {
+		description = strings.ReplaceAll(versionParts[1], "_", " ")
+	}
+
+	return sqlFileInfo{version: version, description: description, direction: direction}, nil
+}
+
+// validateUpFilesExist returns an error if any migration version has no .up.sql file.
+func validateUpFilesExist(migrationsMap map[uint64]*Migration) error {
+	for version, m := range migrationsMap {
+		if m.Source.UpSQL == "" {
+			return fmt.Errorf("migration version %d (%s) has no .up.sql file", version, m.Description)
+		}
+	}
+	return nil
+}
+
 // Load reads .sql files from the configured directory and returns migrations
 // sorted by version in ascending order.
 //
@@ -48,50 +91,25 @@ func (l *sqlLoader) Load() ([]*Migration, error) {
 	migrationsMap := make(map[uint64]*Migration)
 
 	for _, file := range files {
-		if file.IsDir() {
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".sql") {
 			continue
 		}
 
 		name := file.Name()
-		if !strings.HasSuffix(name, ".sql") {
-			continue
-		}
-
-		parts := strings.Split(name, ".")
-		if len(parts) != 3 {
-			return nil, fmt.Errorf("invalid migration filename %q: expected <version>_<description>.<up|down>.sql", name)
-		}
-
-		directionStr := parts[1]
-		if directionStr != MigrationDirectionUp && directionStr != MigrationDirectionDown {
-			return nil, fmt.Errorf("invalid migration filename %q: direction must be \"up\" or \"down\", got %q", name, directionStr)
-		}
-
-		baseName := parts[0]
-		versionParts := strings.SplitN(baseName, "_", 2)
-
-		version, err := strconv.ParseUint(versionParts[0], 10, 64)
+		info, err := parseSQLFilename(name)
 		if err != nil {
-			return nil, fmt.Errorf("invalid migration filename %q: version %q is not a valid number", name, versionParts[0])
+			return nil, err
 		}
 
-		description := ""
-		if len(versionParts) > 1 {
-			description = strings.ReplaceAll(versionParts[1], "_", " ")
-		}
-
-		m, exists := migrationsMap[version]
+		m, exists := migrationsMap[info.version]
 		if !exists {
-			m = &Migration{
-				Version:     version,
-				Description: description,
-			}
-			migrationsMap[version] = m
-		} else if m.Description != description {
+			m = &Migration{Version: info.version, Description: info.description}
+			migrationsMap[info.version] = m
+		} else if m.Description != info.description {
 			return nil, fmt.Errorf(
 				"conflicting files for migration version %d: description %q does not match %q"+
 					" (all files for the same version must share the same name, or this may be an unintended version collision)",
-				version, m.Description, description,
+				info.version, m.Description, info.description,
 			)
 		}
 
@@ -100,7 +118,7 @@ func (l *sqlLoader) Load() ([]*Migration, error) {
 			return nil, fmt.Errorf("failed to read migration file %q: %w", name, err)
 		}
 
-		switch directionStr {
+		switch info.direction {
 		case MigrationDirectionUp:
 			m.Source.UpSQL = string(content)
 		case MigrationDirectionDown:
@@ -108,10 +126,8 @@ func (l *sqlLoader) Load() ([]*Migration, error) {
 		}
 	}
 
-	for version, m := range migrationsMap {
-		if m.Source.UpSQL == "" {
-			return nil, fmt.Errorf("migration version %d (%s) has no .up.sql file", version, m.Description)
-		}
+	if err := validateUpFilesExist(migrationsMap); err != nil {
+		return nil, err
 	}
 
 	migrations := make([]*Migration, 0, len(migrationsMap))

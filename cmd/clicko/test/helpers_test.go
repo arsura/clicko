@@ -38,7 +38,13 @@ const flagsUsage = `Flags:
       --cluster=STRING          ClickHouse cluster name (enables ON CLUSTER).
       --engine=STRING           Custom table engine (overrides default
                                 MergeTree).
-      --insert-quorum=STRING    Insert quorum for cluster writes.
+      --insert-quorum=STRING    Insert quorum for cluster writes (--cluster
+                                required). Set to the total number of nodes in
+                                the cluster (shards x replicas) so every node
+                                acknowledges the write — this works because the
+                                migration table is replicated across all nodes
+                                via a single ZooKeeper path. Accepts a positive
+                                integer or 'auto'.
 `
 
 // globalUsage is the full help text shown when no command is given or an unknown command is used.
