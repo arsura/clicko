@@ -94,32 +94,50 @@ clicko \
   up
 ```
 
-## Why Go integration?
+## Go library
 
 Besides the CLI, clicko can be embedded as a Go library. This lets you run migrations as part of your CI pipeline, write integration tests against a local cluster, and programmatically target different environments — no risky manual access to the cluster required.
 
-## Go library
-
-clicko can also be embedded directly in a Go application using `clicko.New`:
-
 ```go
+package main
+
 import (
+    "context"
+    "log"
+
     "github.com/ClickHouse/clickhouse-go/v2"
     "github.com/arsura/clicko"
+
+    _ "your/app/migrations" // blank import to register Go migrations via init()
 )
 
-opts, _ := clickhouse.ParseDSN("clickhouse://default:@localhost:9000/default")
-conn, _ := clickhouse.Open(opts)
-defer conn.Close()
+func main() {
+    ctx := context.Background()
 
-migrator, _ := clicko.New(conn, clicko.StoreConfig{
-    TableName:    "migration_versions",
-    Cluster:      "migration",
-    CustomEngine: "ReplicatedMergeTree('/clickhouse/migration/table/{database}/{table}', '{replica}')",
-    InsertQuorum: "4",
-})
+    opts, err := clickhouse.ParseDSN("clickhouse://default:@localhost:9000/default")
+    if err != nil {
+        log.Fatal(err)
+    }
+    conn, err := clickhouse.Open(opts)
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer conn.Close()
 
-migrator.Up(ctx)
+    migrator, err := clicko.New(conn, clicko.StoreConfig{
+        TableName:    "migration_versions",
+        Cluster:      "migration",
+        CustomEngine: "ReplicatedMergeTree('/clickhouse/migration/table/{database}/{table}', '{replica}')",
+        InsertQuorum: "4",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    if err := migrator.Up(ctx); err != nil {
+        log.Fatal(err)
+    }
+}
 ```
 
 See [Go integration example](example/go/README.md) for the full walkthrough including Go function migrations with `clicko.RegisterMigration`.
