@@ -1,4 +1,4 @@
-package cli_test
+package clicko_test
 
 import (
 	"path/filepath"
@@ -28,7 +28,7 @@ func TestCLIStandaloneForwardOnlySuite(t *testing.T) {
 }
 
 func (s *CLIStandaloneForwardOnlySuite) SetupSuite() {
-	s.binaryPath = buildCLI(s.T())
+	s.binaryPath = buildClicko(s.T())
 	s.migrationsDir = filepath.Join(testDir(), "testdata", "standalone_with_forward_only")
 	s.conn, s.clickHouseCleanupFunc = dialClickHouse(s.T())
 }
@@ -46,10 +46,10 @@ func (s *CLIStandaloneForwardOnlySuite) SetupTest() {
 // migrations when none of them define a down direction, and reports that
 // there is nothing to revert.
 func (s *CLIStandaloneForwardOnlySuite) TestDownSkipsForwardOnlyMigrations() {
-	out, err := runCLI(s.binaryPath, forwardOnlyCliArgs(s.testDBURI, s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, forwardOnlyArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 
-	out, err = runCLI(s.binaryPath, forwardOnlyCliArgs(s.testDBURI, s.migrationsDir, "down")...)
+	out, err = runCLI(s.binaryPath, forwardOnlyArgs(s.testDBURI, s.migrationsDir, "down")...)
 	require.NoError(s.T(), err, "down: %s", out)
 	require.Equal(s.T(),
 		"Skipping migration 3: add age column (forward-only, no down defined)\n"+
@@ -68,10 +68,10 @@ func (s *CLIStandaloneForwardOnlySuite) TestDownSkipsForwardOnlyMigrations() {
 // migrations when none of them define a down direction, and reports that
 // there is nothing to revert.
 func (s *CLIStandaloneForwardOnlySuite) TestResetSkipsForwardOnlyMigrations() {
-	out, err := runCLI(s.binaryPath, forwardOnlyCliArgs(s.testDBURI, s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, forwardOnlyArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 
-	out, err = runCLI(s.binaryPath, forwardOnlyCliArgs(s.testDBURI, s.migrationsDir, "reset")...)
+	out, err = runCLI(s.binaryPath, forwardOnlyArgs(s.testDBURI, s.migrationsDir, "reset")...)
 	require.NoError(s.T(), err, "reset: %s", out)
 	require.Equal(s.T(),
 		"Skipping migration 3: add age column (forward-only, no down defined)\n"+

@@ -17,7 +17,7 @@ Besides the CLI, clicko can be embedded as a Go library. This lets you run migra
 ## Installation
 
 ```bash
-go install github.com/arsura/clicko/cmd/cli@latest
+go install github.com/arsura/clicko/cmd/clicko@latest
 ```
 
 ## CLI usage
@@ -114,7 +114,7 @@ See [Go integration example](example/go/README.md) for the full walkthrough incl
 
 ## Examples
 
-- [CLI example](example/cli/README.md) — SQL file migrations via the CLI
+- [CLI example](example/clicko/README.md) — SQL file migrations via the CLI
 - [Go example](example/go/README.md) — Go function migrations embedded in an application
 
 ## Migrations on a sharded cluster

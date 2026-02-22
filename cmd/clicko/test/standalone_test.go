@@ -1,4 +1,4 @@
-package cli_test
+package clicko_test
 
 import (
 	"path/filepath"
@@ -33,7 +33,7 @@ func TestCLIStandaloneSuite(t *testing.T) {
 }
 
 func (s *CLIStandaloneSuite) SetupSuite() {
-	s.binaryPath = buildCLI(s.T())
+	s.binaryPath = buildClicko(s.T())
 	s.migrationsDir = filepath.Join(testDir(), "testdata", "standalone")
 	s.conn, s.clickHouseCleanupFunc = dialClickHouse(s.T())
 }
@@ -52,7 +52,7 @@ func (s *CLIStandaloneSuite) SetupTest() {
 // ---------------------------------------------------------------------------
 
 func (s *CLIStandaloneSuite) TestUpAppliesAllMigrations() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -67,7 +67,7 @@ func (s *CLIStandaloneSuite) TestUpAppliesAllMigrations() {
 }
 
 func (s *CLIStandaloneSuite) TestUpIdempotent() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "first up: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -77,7 +77,7 @@ func (s *CLIStandaloneSuite) TestUpIdempotent() {
 		"OK\n",
 		normalizeOutput(out))
 
-	out, err = runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "up")...)
+	out, err = runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "second up: %s", out)
 	require.Equal(s.T(), "No pending migrations to apply\n",
 		normalizeOutput(out))
@@ -91,7 +91,7 @@ func (s *CLIStandaloneSuite) TestUpIdempotent() {
 // ---------------------------------------------------------------------------
 
 func (s *CLIStandaloneSuite) TestUpToTargetVersion() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "up-to", "2")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up-to", "2")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -104,7 +104,7 @@ func (s *CLIStandaloneSuite) TestUpToTargetVersion() {
 }
 
 func (s *CLIStandaloneSuite) TestUpToAlreadyApplied() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -114,7 +114,7 @@ func (s *CLIStandaloneSuite) TestUpToAlreadyApplied() {
 		"OK\n",
 		normalizeOutput(out))
 
-	out, err = runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "up-to", "2")...)
+	out, err = runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up-to", "2")...)
 	require.NoError(s.T(), err, "up-to: %s", out)
 	require.Equal(s.T(), "No pending migrations to apply\n",
 		normalizeOutput(out))
@@ -124,7 +124,7 @@ func (s *CLIStandaloneSuite) TestUpToAlreadyApplied() {
 }
 
 func (s *CLIStandaloneSuite) TestUpToVersionBeyondMax() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "up-to", "999")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up-to", "999")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -143,7 +143,7 @@ func (s *CLIStandaloneSuite) TestUpToVersionBeyondMax() {
 // ---------------------------------------------------------------------------
 
 func (s *CLIStandaloneSuite) TestDownRevertsLastMigration() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -153,7 +153,7 @@ func (s *CLIStandaloneSuite) TestDownRevertsLastMigration() {
 		"OK\n",
 		normalizeOutput(out))
 
-	out, err = runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "down")...)
+	out, err = runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "down")...)
 	require.NoError(s.T(), err, "down: %s", out)
 	require.Equal(s.T(), "Reverting migration 3: add age column\n"+
 		"OK\n",
@@ -164,7 +164,7 @@ func (s *CLIStandaloneSuite) TestDownRevertsLastMigration() {
 }
 
 func (s *CLIStandaloneSuite) TestDownNothingToRevert() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "down")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "down")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(), "No migrations to revert\n",
 		normalizeOutput(out))
@@ -175,7 +175,7 @@ func (s *CLIStandaloneSuite) TestDownNothingToRevert() {
 // ---------------------------------------------------------------------------
 
 func (s *CLIStandaloneSuite) TestDownToTargetVersion() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -185,7 +185,7 @@ func (s *CLIStandaloneSuite) TestDownToTargetVersion() {
 		"OK\n",
 		normalizeOutput(out))
 
-	out, err = runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "down-to", "1")...)
+	out, err = runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "down-to", "1")...)
 	require.NoError(s.T(), err, "down-to: %s", out)
 	require.Equal(s.T(), "Reverting migration 3: add age column\n"+
 		"OK\n"+
@@ -198,7 +198,7 @@ func (s *CLIStandaloneSuite) TestDownToTargetVersion() {
 }
 
 func (s *CLIStandaloneSuite) TestDownToZeroRevertsAll() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -208,7 +208,7 @@ func (s *CLIStandaloneSuite) TestDownToZeroRevertsAll() {
 		"OK\n",
 		normalizeOutput(out))
 
-	out, err = runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "down-to", "0")...)
+	out, err = runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "down-to", "0")...)
 	require.NoError(s.T(), err, "down-to: %s", out)
 	require.Equal(s.T(), "Reverting migration 3: add age column\n"+
 		"OK\n"+
@@ -223,10 +223,10 @@ func (s *CLIStandaloneSuite) TestDownToZeroRevertsAll() {
 }
 
 func (s *CLIStandaloneSuite) TestDownToVersionBeyondMax() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 
-	out, err = runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "down-to", "999")...)
+	out, err = runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "down-to", "999")...)
 	require.NoError(s.T(), err, "down-to: %s", out)
 	require.Equal(s.T(), "No migrations to revert\n",
 		normalizeOutput(out))
@@ -236,7 +236,7 @@ func (s *CLIStandaloneSuite) TestDownToVersionBeyondMax() {
 }
 
 func (s *CLIStandaloneSuite) TestDownToOnEmptyState() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "down-to", "0")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "down-to", "0")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(), "No migrations to revert\n",
 		normalizeOutput(out))
@@ -247,7 +247,7 @@ func (s *CLIStandaloneSuite) TestDownToOnEmptyState() {
 // ---------------------------------------------------------------------------
 
 func (s *CLIStandaloneSuite) TestResetRevertsAllMigrations() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -257,7 +257,7 @@ func (s *CLIStandaloneSuite) TestResetRevertsAllMigrations() {
 		"OK\n",
 		normalizeOutput(out))
 
-	out, err = runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "reset")...)
+	out, err = runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "reset")...)
 	require.NoError(s.T(), err, "reset: %s", out)
 	require.Equal(s.T(), "Reverting migration 3: add age column\n"+
 		"OK\n"+
@@ -272,7 +272,7 @@ func (s *CLIStandaloneSuite) TestResetRevertsAllMigrations() {
 }
 
 func (s *CLIStandaloneSuite) TestResetOnEmptyState() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "reset")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "reset")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(), "No migrations to revert\n",
 		normalizeOutput(out))
@@ -283,7 +283,7 @@ func (s *CLIStandaloneSuite) TestResetOnEmptyState() {
 // ---------------------------------------------------------------------------
 
 func (s *CLIStandaloneSuite) TestStatusAllPending() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "status")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "status")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(), statusHeader+
 		"1          create test table         Pending    \n"+
@@ -293,10 +293,10 @@ func (s *CLIStandaloneSuite) TestStatusAllPending() {
 }
 
 func (s *CLIStandaloneSuite) TestStatusAllApplied() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 
-	out, err = runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "status")...)
+	out, err = runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "status")...)
 	require.NoError(s.T(), err, "status: %s", out)
 	require.Equal(s.T(), statusHeader+
 		"1          create test table         Applied    APPLIED_AT         \n"+
@@ -306,10 +306,10 @@ func (s *CLIStandaloneSuite) TestStatusAllApplied() {
 }
 
 func (s *CLIStandaloneSuite) TestStatusPartiallyApplied() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "up-to", "2")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up-to", "2")...)
 	require.NoError(s.T(), err, "up-to: %s", out)
 
-	out, err = runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "status")...)
+	out, err = runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "status")...)
 	require.NoError(s.T(), err, "status: %s", out)
 	require.Equal(s.T(), statusHeader+
 		"1          create test table         Applied    APPLIED_AT         \n"+
@@ -323,7 +323,7 @@ func (s *CLIStandaloneSuite) TestStatusPartiallyApplied() {
 // ---------------------------------------------------------------------------
 
 func (s *CLIStandaloneSuite) TestUpThenDownThenUpAgain() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "up")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "first up: %s", out)
 	require.Equal(s.T(), "Applying migration 1: create test table\n"+
 		"OK\n"+
@@ -333,13 +333,13 @@ func (s *CLIStandaloneSuite) TestUpThenDownThenUpAgain() {
 		"OK\n",
 		normalizeOutput(out))
 
-	out, err = runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "down")...)
+	out, err = runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "down")...)
 	require.NoError(s.T(), err, "down: %s", out)
 	require.Equal(s.T(), "Reverting migration 3: add age column\n"+
 		"OK\n",
 		normalizeOutput(out))
 
-	out, err = runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, s.migrationsDir, "up")...)
+	out, err = runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "second up: %s", out)
 	require.Equal(s.T(), "Applying migration 3: add age column\n"+
 		"OK\n",
@@ -354,7 +354,7 @@ func (s *CLIStandaloneSuite) TestUpThenDownThenUpAgain() {
 // ---------------------------------------------------------------------------
 
 func (s *CLIStandaloneSuite) TestInvalidMigrationsDir() {
-	out, err := runCLI(s.binaryPath, standaloneCliArgs(s.testDBURI, "/nonexistent/path", "up")...)
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, "/nonexistent/path", "up")...)
 	require.Error(s.T(), err)
 	require.Equal(s.T(),
 		"failed to load migrations: failed to read migrations directory \"/nonexistent/path\": open /nonexistent/path: no such file or directory\n",

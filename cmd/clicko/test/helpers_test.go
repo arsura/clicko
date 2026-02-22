@@ -1,4 +1,4 @@
-package cli_test
+package clicko_test
 
 import (
 	"context"
@@ -100,8 +100,8 @@ func testDir() string {
 	return filepath.Dir(filename)
 }
 
-// buildCLI compiles the CLI binary into a temp directory and returns its path.
-func buildCLI(t *testing.T) string {
+// buildClicko compiles the CLI binary into a temp directory and returns its path.
+func buildClicko(t *testing.T) string {
 	t.Helper()
 
 	binPath := filepath.Join(t.TempDir(), "clicko")
@@ -160,8 +160,8 @@ func runCLI(binaryPath string, args ...string) (string, error) {
 	return string(out), err
 }
 
-// cliArgs returns the common flags for cluster mode with the given command prepended.
-func cliArgs(uri, migrationsDir string, command ...string) []string {
+// args returns the common flags for cluster mode with the given command prepended.
+func args(uri, migrationsDir string, command ...string) []string {
 	args := append(command,
 		"--uri", uri,
 		"--dir", migrationsDir,
@@ -173,8 +173,8 @@ func cliArgs(uri, migrationsDir string, command ...string) []string {
 	return args
 }
 
-// standaloneCliArgs returns the common flags for standalone (single node) mode.
-func standaloneCliArgs(uri, migrationsDir string, command ...string) []string {
+// standaloneArgs returns the common flags for standalone (single node) mode.
+func standaloneArgs(uri, migrationsDir string, command ...string) []string {
 	args := append(command,
 		"--uri", uri,
 		"--dir", migrationsDir,
@@ -183,8 +183,8 @@ func standaloneCliArgs(uri, migrationsDir string, command ...string) []string {
 	return args
 }
 
-// forwardOnlyCliArgs returns CLI flags for the forward-only migration test suite.
-func forwardOnlyCliArgs(uri, migrationsDir string, command ...string) []string {
+// forwardOnlyArgs returns CLI flags for the forward-only migration test suite.
+func forwardOnlyArgs(uri, migrationsDir string, command ...string) []string {
 	args := append(command,
 		"--uri", uri,
 		"--dir", migrationsDir,

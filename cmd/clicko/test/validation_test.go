@@ -1,4 +1,4 @@
-package cli_test
+package clicko_test
 
 import (
 	"testing"
@@ -20,7 +20,7 @@ func TestCLIValidationSuite(t *testing.T) {
 }
 
 func (s *CLIValidationSuite) SetupSuite() {
-	s.binaryPath = buildCLI(s.T())
+	s.binaryPath = buildClicko(s.T())
 }
 
 func (s *CLIValidationSuite) TestHelp() {

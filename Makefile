@@ -6,7 +6,7 @@ COMPOSE_FILE := dev/cluster/docker-compose.yaml
 .PHONY: build clean test cluster-up cluster-down cluster-restart cluster-logs cluster-status
 
 build:
-	go build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/cli
+	go build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/clicko
 
 clean:
 	rm -rf $(BUILD_DIR)
