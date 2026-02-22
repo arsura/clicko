@@ -1,4 +1,177 @@
 # clicko
 
-- 👌Code OK!
-- 🚧 README.md Under Construction 🚧
+A ClickHouse migration tool friendly for self-hosted sharded clusters, inspired by [pressly/goose](https://github.com/pressly/goose). Works with ClickHouse Cloud too. Supports engine selection, insert quorum, `ON CLUSTER` DDL, and both SQL file and Go function migrations.
+
+## Features
+
+- **Engine selection** — Choose any ClickHouse table engine for the migration tracking table. Standalone mode defaults to `MergeTree()`; cluster mode defaults to `ReplicatedMergeTree(...)`. Override with `--engine` to control the ZooKeeper path and replication topology.
+- **Insert quorum** — Set `--insert-quorum` (a number or `"auto"`) to ensure migration records are replicated to N nodes before being considered applied. Prevents inconsistent migration state across replicas.
+- **Cluster and sharding support** — First-class `ON CLUSTER` support via `--cluster`. DDL propagates across all nodes; DELETE mutations use `mutations_sync=2` for consistency.
+- **Native ClickHouse protocol** — Uses [clickhouse-go/v2](https://github.com/ClickHouse/clickhouse-go) with `clickhouse.Conn` (native interface)
+- **SQL and Go migrations** — Write migrations as plain `.sql` files or as Go functions.
+
+## Why Go integration?
+
+Besides the CLI, clicko can be embedded as a Go library. This lets you run migrations as part of your CI pipeline, write integration tests against a local cluster, and programmatically target different environments — no risky manual access to the cluster required.
+
+## Installation
+
+```bash
+go install github.com/arsura/clicko/cmd/cli@latest
+```
+
+## CLI usage
+
+```
+clicko --uri <uri> [flags] <command>
+```
+
+### Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--uri` | *(required)* | ClickHouse connection URI (e.g. `clickhouse://user:pass@host:9000/db`) |
+| `--dir` | `migrations` | Directory containing migration files |
+| `--table` | `migration_versions` | Migration tracking table name |
+| `--cluster` | — | ClickHouse cluster name (enables `ON CLUSTER`) |
+| `--engine` | — | Custom table engine for the tracking table |
+| `--insert-quorum` | — | Write quorum for cluster inserts (number or `"auto"`) |
+| `--help` | — | Show help |
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `up` | Apply all pending migrations |
+| `up-to <version>` | Apply migrations up to a specific version |
+| `down` | Rollback the last applied migration |
+| `down-to <version>` | Rollback migrations down to a specific version |
+| `reset` | Rollback all applied migrations |
+| `status` | Show migration status |
+
+## Example
+
+```bash
+clicko --uri "clickhouse://default:@localhost:9000/default" --dir migrations up
+```
+
+### Cluster mode
+
+```bash
+clicko \
+  --uri "clickhouse://default:@localhost:9000/default" \
+  --dir migrations \
+  --cluster migration \
+  --engine "ReplicatedMergeTree('/clickhouse/migration/table/{database}/{table}', '{replica}')" \
+  --insert-quorum 4 \
+  up
+```
+
+## Migration files
+
+SQL migration files follow the naming convention:
+
+```
+{version}_{description}.{up|down}.sql
+```
+
+Example directory:
+
+```
+migrations/
+├── 00001_create_users.up.sql
+├── 00001_create_users.down.sql
+├── 00002_create_orders.up.sql
+├── 00002_create_orders.down.sql
+└── 00003_add_users_age_column.up.sql
+```
+
+## Go library
+
+clicko can also be embedded directly in a Go application using `clicko.New`:
+
+```go
+import (
+    "github.com/ClickHouse/clickhouse-go/v2"
+    "github.com/arsura/clicko"
+)
+
+opts, _ := clickhouse.ParseDSN("clickhouse://default:@localhost:9000/default")
+conn, _ := clickhouse.Open(opts)
+defer conn.Close()
+
+migrator, _ := clicko.New(conn, clicko.StoreConfig{
+    TableName:    "migration_versions",
+    Cluster:      "migration",
+    CustomEngine: "ReplicatedMergeTree('/clickhouse/migration/table/{database}/{table}', '{replica}')",
+    InsertQuorum: "4",
+})
+
+migrator.Up(ctx)
+```
+
+See [Go integration example](example/go/README.md) for the full walkthrough including Go function migrations with `clicko.RegisterMigration`.
+
+## Examples
+
+- [CLI example](example/cli/README.md) — SQL file migrations via the CLI
+- [Go example](example/go/README.md) — Go function migrations embedded in an application
+
+## Migrations on a sharded cluster
+
+When your ClickHouse cluster has multiple shards, the data cluster (e.g. `dev`) splits nodes into separate shards — each shard only replicates within its own group. This is great for data but problematic for migration tracking: if you run `ON CLUSTER dev`, the migration table gets sharded too, and each shard may end up with an independent copy of migration state.
+
+The solution is to define a **logical cluster** dedicated to migrations. This cluster puts **all replicas from every shard into a single shard**, so the migration tracking table replicates uniformly across the entire cluster.
+
+For example, the `dev/cluster` setup defines two clusters:
+
+- `dev` — the data cluster with 2 shards x 2 replicas:
+
+```
+dev
+├── shard 1: ch-1-1, ch-1-2
+└── shard 2: ch-2-1, ch-2-2
+```
+
+- `migration` — a logical cluster with a single shard containing all 4 nodes:
+
+```
+migration
+└── shard 1: ch-1-1, ch-1-2, ch-2-1, ch-2-2
+```
+
+When you run clicko with `--cluster migration`, the migration tracking table is created `ON CLUSTER migration` and every node sees the same replicated migration state. Pair this with a custom engine whose ZooKeeper path does **not** include `{shard}`, and `--insert-quorum` to guarantee writes reach all replicas before returning:
+
+```bash
+clicko \
+  --cluster migration \
+  --engine "ReplicatedMergeTree('/clickhouse/migration/table/{database}/{table}', '{replica}')" \
+  --insert-quorum 4 \
+  ...
+```
+
+Your actual data migrations can still use `ON CLUSTER dev` inside the SQL files themselves.
+
+## Development
+
+The `dev/cluster` directory contains a Docker Compose setup for a local ClickHouse cluster (2 shards x 2 replicas + 1 ClickHouse Keeper node).
+
+Start the cluster:
+
+```bash
+make cluster-up
+```
+
+Run tests:
+
+```bash
+make test
+```
+
+Other commands:
+
+```bash
+make cluster-down       # stop and remove volumes
+make cluster-restart    # restart the cluster
+make build              # build the CLI binary to bin/clicko
+```
