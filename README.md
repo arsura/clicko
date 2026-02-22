@@ -10,7 +10,6 @@ A ClickHouse migration tool friendly for self-hosted sharded clusters, inspired 
 - **Engine selection** — Choose any ClickHouse table engine for the migration tracking table. Standalone mode defaults to `MergeTree()`; cluster mode defaults to `ReplicatedMergeTree(...)`. Override with `--engine` to control the ZooKeeper path and replication topology.
 - **Insert quorum** — Set `--insert-quorum` (a number or `"auto"`) to ensure migration records are replicated to N nodes before being considered applied. Prevents inconsistent migration state across replicas.
 - **Cluster and sharding support** — First-class `ON CLUSTER` support via `--cluster`. DDL propagates across all nodes; DELETE mutations use `mutations_sync=2` for consistency.
-- **Native ClickHouse protocol** — Uses [clickhouse-go/v2](https://github.com/ClickHouse/clickhouse-go) with `clickhouse.Conn` (native interface)
 - **SQL and Go migrations** — Write migrations as plain `.sql` files or as Go functions.
 
 ## Installation
