@@ -206,6 +206,65 @@ func (m *Migrator) applyDown(ctx context.Context, migration *Migration) error {
 	return m.store.Remove(ctx, migration.Version)
 }
 
+// DryRun prints the SQL that each pending migration would execute,
+// without actually applying anything. For Go migrations the function is
+// invoked against a no-op connection that captures every Exec/Query call,
+// so dynamically-built SQL is shown in its final form.
+func (m *Migrator) DryRun(ctx context.Context) error {
+	return m.dryRun(ctx, 0)
+}
+
+// DryRunTo is like DryRun but only shows migrations up to and including
+// the target version.
+func (m *Migrator) DryRunTo(ctx context.Context, target uint64) error {
+	return m.dryRun(ctx, target)
+}
+
+func (m *Migrator) dryRun(ctx context.Context, target uint64) error {
+	migrations, applied, err := m.loadState(ctx)
+	if err != nil {
+		return err
+	}
+
+	pendingCount := 0
+	for _, migration := range migrations {
+		if _, ok := applied[migration.Version]; ok {
+			continue
+		}
+
+		if target > 0 && migration.Version > target {
+			break
+		}
+
+		fmt.Printf("=== Version %d: %s (%s) ===\n", migration.Version, migration.Description, migration.Source.Type)
+
+		switch migration.Source.Type {
+		case MigrationSourceTypeSQL:
+			fmt.Println(strings.TrimSpace(migration.Source.UpSQL))
+		case MigrationSourceTypeGo:
+			dc := &dryRunConn{}
+			if err := migration.Source.UpFunc(ctx, dc); err != nil {
+				fmt.Printf("-- dry-run error: %v\n", err)
+			}
+			for i, stmt := range dc.statements {
+				if i > 0 {
+					fmt.Println()
+				}
+				fmt.Println(stmt)
+			}
+		}
+
+		fmt.Println()
+		pendingCount++
+	}
+
+	if pendingCount == 0 {
+		log.Println("No pending migrations")
+	}
+
+	return nil
+}
+
 // Status prints a table showing each migration's version, description,
 // status, and when it was applied.
 func (m *Migrator) Status(ctx context.Context) error {

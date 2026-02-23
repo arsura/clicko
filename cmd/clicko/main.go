@@ -25,6 +25,7 @@ type CLI struct {
 	DownTo DownToCmd `cmd:"down-to" help:"Rollback migrations down to a specific version."`
 	Reset  ResetCmd  `cmd:"" help:"Rollback all applied migrations."`
 	Status StatusCmd `cmd:"" help:"Show migration status."`
+	DryRun DryRunCmd `cmd:"dry-run" help:"Print the SQL each pending migration would execute without applying."`
 }
 
 type UpCmd struct{}
@@ -37,6 +38,9 @@ type DownToCmd struct {
 }
 type ResetCmd struct{}
 type StatusCmd struct{}
+type DryRunCmd struct {
+	Version uint64 `arg:"" optional:"" help:"Target version (omit to preview all pending)."`
+}
 
 func (c *UpCmd) Run(globals *CLI) error {
 	return run(globals, func(ctx context.Context, m *clicko.Migrator) error {
@@ -71,6 +75,15 @@ func (c *ResetCmd) Run(globals *CLI) error {
 func (c *StatusCmd) Run(globals *CLI) error {
 	return run(globals, func(ctx context.Context, m *clicko.Migrator) error {
 		return m.Status(ctx)
+	})
+}
+
+func (c *DryRunCmd) Run(globals *CLI) error {
+	return run(globals, func(ctx context.Context, m *clicko.Migrator) error {
+		if c.Version > 0 {
+			return m.DryRunTo(ctx, c.Version)
+		}
+		return m.DryRun(ctx)
 	})
 }
 

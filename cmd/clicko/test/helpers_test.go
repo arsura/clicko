@@ -70,6 +70,9 @@ Commands:
   status --uri=STRING [flags]
     Show migration status.
 
+  dry-run --uri=STRING [<version>] [flags]
+    Print the SQL each pending migration would execute without applying.
+
 Run "clicko <command> --help" for more information on a command.
 `
 
