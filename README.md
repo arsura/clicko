@@ -39,7 +39,9 @@ migrations/
 └── 00003_add_users_age_column.up.sql
 ```
 
-## Recommendation: forward-only migrations
+## Recommendations
+
+### Forward-only migrations
 
 clicko supports `down` migrations, but for ClickHouse in production you may want to avoid writing them altogether.
 
@@ -48,6 +50,48 @@ ClickHouse tables tend to be large, and many DDL operations (like `DROP COLUMN` 
 A **forward-only** approach means every change is expressed as a new `up` migration. Instead of rolling back, you write a follow-up migration that corrects or reverts the intent. This keeps the migration history append-only, predictable, and safe to apply in automated pipelines.
 
 This is a recommendation, not a requirement. If your use case is well-suited to rollbacks (e.g. a small local cluster or a development environment), the `down` commands work fine.
+
+### Idempotent migrations
+
+ClickHouse has no transactional DDL. If a migration with multiple statements fails halfway, the already-applied statements won't roll back. Re-running the migration will hit errors like "table already exists."
+
+Write every statement in an idempotent form so re-runs are safe:
+
+- `CREATE TABLE IF NOT EXISTS` instead of `CREATE TABLE`
+- `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` instead of `ALTER TABLE ... ADD COLUMN`
+- `DROP TABLE IF EXISTS` instead of `DROP TABLE`
+
+### One statement per migration
+
+When possible, put a single DDL statement in each migration file. Since ClickHouse has no transactional DDL, a file with multiple statements can fail halfway — making it harder to tell what succeeded and what didn't. One statement per file keeps failures obvious and pairs well with idempotent writes.
+
+Instead of one file with two statements:
+
+```sql
+-- 00002_create_orders.up.sql
+CREATE TABLE IF NOT EXISTS orders (...) ENGINE = MergeTree() ORDER BY id;
+CREATE TABLE IF NOT EXISTS order_items (...) ENGINE = MergeTree() ORDER BY id;
+```
+
+Split into two migration files:
+
+```sql
+-- 00002_create_orders.up.sql
+CREATE TABLE IF NOT EXISTS orders (...) ENGINE = MergeTree() ORDER BY id;
+```
+
+```sql
+-- 00003_create_order_items.up.sql
+CREATE TABLE IF NOT EXISTS order_items (...) ENGINE = MergeTree() ORDER BY id;
+```
+
+### Run migrations from CI/CD, not on application boot
+
+ClickHouse has no advisory locks or distributed mutual exclusion. If you run migrations at application startup and deploy multiple instances at once, they will race — causing duplicate tracking rows, conflicting DDL, or partial failures.
+
+Instead, run migrations as a **dedicated, single-process step** in your CI/CD pipeline (e.g. a Kubernetes `Job` or a CI stage) before deploying the new application version. This guarantees only one process touches the migration state at a time, sidestepping the locking problem entirely.
+
+If you use the Go library, run it from a CI job — not as part of your application code.
 
 ## CLI usage
 
