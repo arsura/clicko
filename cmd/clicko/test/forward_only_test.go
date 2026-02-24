@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-// CLIStandaloneForwardOnlySuite tests rollback behaviour when one migration
+// CLIForwardOnlySuite tests rollback behaviour when one migration
 // has no .down.sql file (forward-only). Migration 2 is intentionally missing
 // its down file so that Down() and Reset() must skip it.
-type CLIStandaloneForwardOnlySuite struct {
+type CLIForwardOnlySuite struct {
 	suite.Suite
 	binaryPath            string
 	conn                  clickhouse.Conn
@@ -23,21 +23,21 @@ type CLIStandaloneForwardOnlySuite struct {
 	testDBURI  string
 }
 
-func TestCLIStandaloneForwardOnlySuite(t *testing.T) {
-	suite.Run(t, new(CLIStandaloneForwardOnlySuite))
+func TestCLIForwardOnlySuite(t *testing.T) {
+	suite.Run(t, new(CLIForwardOnlySuite))
 }
 
-func (s *CLIStandaloneForwardOnlySuite) SetupSuite() {
+func (s *CLIForwardOnlySuite) SetupSuite() {
 	s.binaryPath = buildClicko(s.T())
-	s.migrationsDir = filepath.Join(testDir(), "testdata", "standalone_with_forward_only")
+	s.migrationsDir = filepath.Join(testDir(), "testdata", "forward_only")
 	s.conn, s.clickHouseCleanupFunc = dialClickHouse(s.T())
 }
 
-func (s *CLIStandaloneForwardOnlySuite) TearDownSuite() {
+func (s *CLIForwardOnlySuite) TearDownSuite() {
 	s.clickHouseCleanupFunc()
 }
 
-func (s *CLIStandaloneForwardOnlySuite) SetupTest() {
+func (s *CLIForwardOnlySuite) SetupTest() {
 	s.testDBName = createTestDB(s.T(), s.conn, "")
 	s.testDBURI = testURIWithDB(s.testDBName)
 }
@@ -45,7 +45,7 @@ func (s *CLIStandaloneForwardOnlySuite) SetupTest() {
 // TestDownSkipsForwardOnlyMigrations verifies that Down() skips all applied
 // migrations when none of them define a down direction, and reports that
 // there is nothing to revert.
-func (s *CLIStandaloneForwardOnlySuite) TestDownSkipsForwardOnlyMigrations() {
+func (s *CLIForwardOnlySuite) TestDownSkipsForwardOnlyMigrations() {
 	out, err := runCLI(s.binaryPath, forwardOnlyArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 
@@ -67,7 +67,7 @@ func (s *CLIStandaloneForwardOnlySuite) TestDownSkipsForwardOnlyMigrations() {
 // TestResetSkipsForwardOnlyMigrations verifies that Reset() skips all applied
 // migrations when none of them define a down direction, and reports that
 // there is nothing to revert.
-func (s *CLIStandaloneForwardOnlySuite) TestResetSkipsForwardOnlyMigrations() {
+func (s *CLIForwardOnlySuite) TestResetSkipsForwardOnlyMigrations() {
 	out, err := runCLI(s.binaryPath, forwardOnlyArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 

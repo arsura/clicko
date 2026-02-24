@@ -23,6 +23,7 @@ const (
 
 	testClusterMigrationTable              = "cluster_migration_versions"
 	testStandaloneMigrationTable           = "standalone_migration_versions"
+	testDryRunMigrationTable               = "dry_run_migration_versions"
 	testForwardOnlyMigrationTable          = "forward_only_migration_versions"
 	testDefaultEngineClusterMigrationTable = "default_engine_cluster_migration_versions"
 )
@@ -45,6 +46,8 @@ const flagsUsage = `Flags:
                                 migration table is replicated across all nodes
                                 via a single ZooKeeper path. Accepts a positive
                                 integer or 'auto'.
+      --dry-run                 Print the SQL each command would execute without
+                                applying.
 `
 
 // globalUsage is the full help text shown when no command is given or an unknown command is used.
@@ -185,6 +188,16 @@ func standaloneArgs(uri, migrationsDir string, command ...string) []string {
 		"--uri", uri,
 		"--dir", migrationsDir,
 		"--table", testStandaloneMigrationTable,
+	)
+	return args
+}
+
+// dryRunArgs returns CLI flags for the dry-run test suite.
+func dryRunArgs(uri, migrationsDir string, command ...string) []string {
+	args := append(command,
+		"--uri", uri,
+		"--dir", migrationsDir,
+		"--table", testDryRunMigrationTable,
 	)
 	return args
 }

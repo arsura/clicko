@@ -18,6 +18,7 @@ type CLI struct {
 	Cluster      string `help:"ClickHouse cluster name (enables ON CLUSTER)." name:"cluster"`
 	Engine       string `help:"Custom table engine (overrides default MergeTree)." name:"engine"`
 	InsertQuorum string `help:"Insert quorum for cluster writes (--cluster required). Set to the total number of nodes in the cluster (shards x replicas) so every node acknowledges the write — this works because the migration table is replicated across all nodes via a single ZooKeeper path. Accepts a positive integer or 'auto'." name:"insert-quorum"`
+	DryRun       bool   `help:"Print the SQL each command would execute without applying." name:"dry-run"`
 
 	Up     UpCmd     `cmd:"" help:"Apply all pending migrations."`
 	UpTo   UpToCmd   `cmd:"up-to" help:"Apply migrations up to a specific version."`
@@ -95,6 +96,9 @@ func run(globals *CLI, fn func(context.Context, *clicko.Migrator) error) error {
 	}
 
 	m := clicko.NewMigrator(conn, loader, store)
+	if globals.DryRun {
+		m.SetDryRun(true)
+	}
 	return fn(ctx, m)
 }
 

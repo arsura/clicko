@@ -42,8 +42,17 @@ func main() {
 	}
 
 	cmd := "up"
-	if len(os.Args) > 1 {
-		cmd = os.Args[1]
+	dryRun := false
+	for _, arg := range os.Args[1:] {
+		if arg == "--dry-run" {
+			dryRun = true
+		} else {
+			cmd = arg
+		}
+	}
+
+	if dryRun {
+		migrator.SetDryRun(true)
 	}
 
 	switch cmd {
@@ -56,7 +65,7 @@ func main() {
 	case "status":
 		err = migrator.Status(ctx)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command: %s\nusage: go run . [up|down|reset|status]\n", cmd)
+		fmt.Fprintf(os.Stderr, "unknown command: %s\nusage: go run . [up|down|reset|status] [--dry-run]\n", cmd)
 		os.Exit(1)
 	}
 
