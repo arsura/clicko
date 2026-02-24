@@ -109,6 +109,7 @@ clicko --uri <uri> [flags] <command>
 | `--cluster` |   | ClickHouse cluster name (enables `ON CLUSTER`) |
 | `--engine` |   | Custom table engine for the tracking table |
 | `--insert-quorum` |   | Write quorum for cluster inserts (number or `"auto"`) |
+| `--dry-run` |   | Print the SQL each command would execute without applying |
 | `--help` |   | Show help |
 
 ### Commands
@@ -127,6 +128,26 @@ clicko --uri <uri> [flags] <command>
 ```bash
 clicko --uri "clickhouse://default:@localhost:9000/default" --dir migrations up
 ```
+
+### Dry-run mode
+
+Use `--dry-run` to preview the SQL that would be executed without actually applying or reverting any migrations. This works with all commands (`up`, `up-to`, `down`, `down-to`, `reset`).
+
+```bash
+clicko --uri "clickhouse://default:@localhost:9000/default" --dir migrations up --dry-run
+```
+
+Output:
+
+```
+=== Version 1: create users (sql) ===
+CREATE TABLE IF NOT EXISTS users (...) ENGINE = MergeTree() ORDER BY id;
+
+=== Version 2: create orders (sql) ===
+CREATE TABLE IF NOT EXISTS orders (...) ENGINE = MergeTree() ORDER BY id;
+```
+
+For Go function migrations, `--dry-run` captures every `Exec` and `Query` call the function makes against a no-op connection, so dynamically-built SQL is shown in its final form.
 
 ### Cluster mode
 
@@ -179,6 +200,9 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
+
+    // Optional: preview SQL without applying.
+    // migrator.SetDryRun(true)
 
     if err := migrator.Up(ctx); err != nil {
         log.Fatal(err)

@@ -18,6 +18,7 @@ type CLI struct {
 	Cluster      string `help:"ClickHouse cluster name (enables ON CLUSTER)." name:"cluster"`
 	Engine       string `help:"Custom table engine (overrides default MergeTree)." name:"engine"`
 	InsertQuorum string `help:"Insert quorum for cluster writes (--cluster required). Set to the total number of nodes in the cluster (shards x replicas) so every node acknowledges the write — this works because the migration table is replicated across all nodes via a single ZooKeeper path. Accepts a positive integer or 'auto'." name:"insert-quorum"`
+	DryRun       bool   `help:"Print the SQL each command would execute without applying." name:"dry-run"`
 
 	Up     UpCmd     `cmd:"" help:"Apply all pending migrations."`
 	UpTo   UpToCmd   `cmd:"up-to" help:"Apply migrations up to a specific version."`
@@ -25,7 +26,6 @@ type CLI struct {
 	DownTo DownToCmd `cmd:"down-to" help:"Rollback migrations down to a specific version."`
 	Reset  ResetCmd  `cmd:"" help:"Rollback all applied migrations."`
 	Status StatusCmd `cmd:"" help:"Show migration status."`
-	DryRun DryRunCmd `cmd:"dry-run" help:"Print the SQL each pending migration would execute without applying."`
 }
 
 type UpCmd struct{}
@@ -38,9 +38,6 @@ type DownToCmd struct {
 }
 type ResetCmd struct{}
 type StatusCmd struct{}
-type DryRunCmd struct {
-	Version uint64 `arg:"" optional:"" help:"Target version (omit to preview all pending)."`
-}
 
 func (c *UpCmd) Run(globals *CLI) error {
 	return run(globals, func(ctx context.Context, m *clicko.Migrator) error {
@@ -78,15 +75,6 @@ func (c *StatusCmd) Run(globals *CLI) error {
 	})
 }
 
-func (c *DryRunCmd) Run(globals *CLI) error {
-	return run(globals, func(ctx context.Context, m *clicko.Migrator) error {
-		if c.Version > 0 {
-			return m.DryRunTo(ctx, c.Version)
-		}
-		return m.DryRun(ctx)
-	})
-}
-
 func run(globals *CLI, fn func(context.Context, *clicko.Migrator) error) error {
 	ctx := context.Background()
 
@@ -108,6 +96,9 @@ func run(globals *CLI, fn func(context.Context, *clicko.Migrator) error) error {
 	}
 
 	m := clicko.NewMigrator(conn, loader, store)
+	if globals.DryRun {
+		m.SetDryRun(true)
+	}
 	return fn(ctx, m)
 }
 

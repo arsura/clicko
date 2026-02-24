@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
 
+var _ clickhouse.Conn = (*dryRunConn)(nil)
+
 // dryRunConn implements clickhouse.Conn but captures SQL statements
-// instead of executing them. Used by DryRun to reveal the actual SQL
+// instead of executing them. Used by dry-run mode to reveal the actual SQL
 // that Go migration functions would send to ClickHouse.
 type dryRunConn struct {
 	statements []string
@@ -53,11 +56,11 @@ func (c *dryRunConn) AsyncInsert(_ context.Context, query string, _ bool, args .
 	return nil
 }
 
-func (c *dryRunConn) Ping(_ context.Context) error                          { return nil }
-func (c *dryRunConn) Close() error                                          { return nil }
-func (c *dryRunConn) Stats() driver.Stats                                   { return driver.Stats{} }
-func (c *dryRunConn) Contributors() []string                                { return nil }
-func (c *dryRunConn) ServerVersion() (*driver.ServerVersion, error)         { return nil, nil }
+func (c *dryRunConn) Ping(_ context.Context) error                  { return nil }
+func (c *dryRunConn) Close() error                                  { return nil }
+func (c *dryRunConn) Stats() driver.Stats                           { return driver.Stats{} }
+func (c *dryRunConn) Contributors() []string                        { return nil }
+func (c *dryRunConn) ServerVersion() (*driver.ServerVersion, error) { return nil, nil }
 
 // emptyRows implements driver.Rows returning no data.
 // Query/Select calls in dry-run mode return this so the migration

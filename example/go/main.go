@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strconv"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/arsura/clicko"
@@ -43,8 +42,17 @@ func main() {
 	}
 
 	cmd := "up"
-	if len(os.Args) > 1 {
-		cmd = os.Args[1]
+	dryRun := false
+	for _, arg := range os.Args[1:] {
+		if arg == "--dry-run" {
+			dryRun = true
+		} else {
+			cmd = arg
+		}
+	}
+
+	if dryRun {
+		migrator.SetDryRun(true)
 	}
 
 	switch cmd {
@@ -56,19 +64,8 @@ func main() {
 		err = migrator.Reset(ctx)
 	case "status":
 		err = migrator.Status(ctx)
-	case "dry-run":
-		if len(os.Args) > 2 {
-			v, parseErr := strconv.ParseUint(os.Args[2], 10, 64)
-			if parseErr != nil {
-				fmt.Fprintf(os.Stderr, "invalid version: %s\n", os.Args[2])
-				os.Exit(1)
-			}
-			err = migrator.DryRunTo(ctx, v)
-		} else {
-			err = migrator.DryRun(ctx)
-		}
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command: %s\nusage: go run . [up|down|reset|status|dry-run]\n", cmd)
+		fmt.Fprintf(os.Stderr, "unknown command: %s\nusage: go run . [up|down|reset|status] [--dry-run]\n", cmd)
 		os.Exit(1)
 	}
 

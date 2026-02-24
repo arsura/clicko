@@ -17,6 +17,7 @@ type Migrator struct {
 	loader Loader
 	store  Store
 	conn   clickhouse.Conn
+	dryRun bool
 }
 
 // NewMigrator creates a Migrator with the given connection, loader, and store.
@@ -29,14 +30,15 @@ func NewMigrator(conn clickhouse.Conn, loader Loader, store Store) *Migrator {
 	}
 }
 
+// SetDryRun enables or disables dry-run mode. When enabled, commands print
+// the SQL each migration would execute instead of running it.
+func (m *Migrator) SetDryRun(enabled bool) {
+	m.dryRun = enabled
+}
+
 // Up applies all pending migrations.
 func (m *Migrator) Up(ctx context.Context) error {
 	return m.up(ctx, 0)
-}
-
-// UpTo applies pending migrations up to and including the target version.
-func (m *Migrator) UpTo(ctx context.Context, target uint64) error {
-	return m.up(ctx, target)
 }
 
 // up is the shared implementation for Up and UpTo.
@@ -49,25 +51,26 @@ func (m *Migrator) up(ctx context.Context, target uint64) error {
 
 	appliedCount := 0
 	for _, migration := range migrations {
-		// Skip already-applied versions.
 		if _, ok := applied[migration.Version]; ok {
 			continue
 		}
 
-		// Migrations are sorted ascending by version (from loader).
-		// If we've passed the target, everything after is also beyond it.
 		if target > 0 && migration.Version > target {
 			break
 		}
 
-		log.Printf("Applying migration %d: %s", migration.Version, migration.Description)
-		start := time.Now()
+		if m.dryRun {
+			m.printMigrationSQL(ctx, migration, MigrationDirectionUp)
+		} else {
+			log.Printf("Applying migration %d: %s", migration.Version, migration.Description)
+			start := time.Now()
 
-		if err := m.applyUp(ctx, migration); err != nil {
-			return fmt.Errorf("failed to apply migration %d: %w", migration.Version, err)
+			if err := m.applyUp(ctx, migration); err != nil {
+				return fmt.Errorf("failed to apply migration %d: %w", migration.Version, err)
+			}
+
+			log.Printf("OK (%v)", time.Since(start))
 		}
-
-		log.Printf("OK (%v)", time.Since(start))
 		appliedCount++
 	}
 
@@ -98,6 +101,46 @@ func (m *Migrator) loadState(ctx context.Context) ([]*Migration, map[uint64]*Mig
 	return migrations, applied, nil
 }
 
+// printMigrationSQL prints the SQL a migration would execute in the given
+// direction. For Go migrations the function is invoked against a no-op
+// connection that captures every Exec/Query call, so dynamically-built SQL
+// is shown in its final form.
+func (m *Migrator) printMigrationSQL(ctx context.Context, migration *Migration, direction string) {
+	fmt.Printf("=== Version %d: %s (%s) ===\n", migration.Version, migration.Description, migration.Source.Type)
+
+	switch migration.Source.Type {
+	case MigrationSourceTypeSQL:
+		var sql string
+		if direction == MigrationDirectionUp {
+			sql = migration.Source.UpSQL
+		} else {
+			sql = migration.Source.DownSQL
+		}
+		fmt.Println(strings.TrimSpace(sql))
+	case MigrationSourceTypeGo:
+		dc := &dryRunConn{}
+		var fn GoMigrationFunc
+		if direction == MigrationDirectionUp {
+			fn = migration.Source.UpFunc
+		} else {
+			fn = migration.Source.DownFunc
+		}
+		if fn == nil {
+			fmt.Println("-- no function defined")
+		} else if err := fn(ctx, dc); err != nil {
+			fmt.Printf("-- dry-run error: %v\n", err)
+		}
+		for i, stmt := range dc.statements {
+			if i > 0 {
+				fmt.Println()
+			}
+			fmt.Println(stmt)
+		}
+	}
+
+	fmt.Println()
+}
+
 // applyUp executes the up direction of a migration and records it as applied in the store.
 func (m *Migrator) applyUp(ctx context.Context, migration *Migration) error {
 	switch migration.Source.Type {
@@ -116,19 +159,14 @@ func (m *Migrator) applyUp(ctx context.Context, migration *Migration) error {
 	return m.store.Add(ctx, migration.Version, migration.Description)
 }
 
+// UpTo applies pending migrations up to and including the target version.
+func (m *Migrator) UpTo(ctx context.Context, target uint64) error {
+	return m.up(ctx, target)
+}
+
 // Down reverts the last applied migration.
 func (m *Migrator) Down(ctx context.Context) error {
 	return m.down(ctx, 0, 1)
-}
-
-// DownTo reverts all applied migrations down to (but not including) the target version.
-func (m *Migrator) DownTo(ctx context.Context, target uint64) error {
-	return m.down(ctx, target, 0)
-}
-
-// Reset reverts all applied migrations.
-func (m *Migrator) Reset(ctx context.Context) error {
-	return m.down(ctx, 0, 0)
 }
 
 // down is the shared implementation for Down and DownTo.
@@ -157,25 +195,26 @@ func (m *Migrator) down(ctx context.Context, target uint64, limit int) error {
 
 		if !migration.Source.HasDown() {
 			log.Printf("Skipping migration %d: %s (forward-only, no down defined)", migration.Version, migration.Description)
-			// When a limit is set (Down command), this is the one migration we
-			// attempted — stop here instead of falling through to earlier migrations.
 			if limit > 0 {
 				break
 			}
 			continue
 		}
 
-		log.Printf("Reverting migration %d: %s", migration.Version, migration.Description)
-		start := time.Now()
+		if m.dryRun {
+			m.printMigrationSQL(ctx, migration, MigrationDirectionDown)
+		} else {
+			log.Printf("Reverting migration %d: %s", migration.Version, migration.Description)
+			start := time.Now()
 
-		if err := m.applyDown(ctx, migration); err != nil {
-			return fmt.Errorf("failed to revert migration %d: %w", migration.Version, err)
+			if err := m.applyDown(ctx, migration); err != nil {
+				return fmt.Errorf("failed to revert migration %d: %w", migration.Version, err)
+			}
+
+			log.Printf("OK (%v)", time.Since(start))
 		}
-
-		log.Printf("OK (%v)", time.Since(start))
 		revertedCount++
 
-		// Used by Down() to revert only one migration.
 		if limit > 0 && revertedCount >= limit {
 			break
 		}
@@ -206,63 +245,14 @@ func (m *Migrator) applyDown(ctx context.Context, migration *Migration) error {
 	return m.store.Remove(ctx, migration.Version)
 }
 
-// DryRun prints the SQL that each pending migration would execute,
-// without actually applying anything. For Go migrations the function is
-// invoked against a no-op connection that captures every Exec/Query call,
-// so dynamically-built SQL is shown in its final form.
-func (m *Migrator) DryRun(ctx context.Context) error {
-	return m.dryRun(ctx, 0)
+// DownTo reverts all applied migrations down to (but not including) the target version.
+func (m *Migrator) DownTo(ctx context.Context, target uint64) error {
+	return m.down(ctx, target, 0)
 }
 
-// DryRunTo is like DryRun but only shows migrations up to and including
-// the target version.
-func (m *Migrator) DryRunTo(ctx context.Context, target uint64) error {
-	return m.dryRun(ctx, target)
-}
-
-func (m *Migrator) dryRun(ctx context.Context, target uint64) error {
-	migrations, applied, err := m.loadState(ctx)
-	if err != nil {
-		return err
-	}
-
-	pendingCount := 0
-	for _, migration := range migrations {
-		if _, ok := applied[migration.Version]; ok {
-			continue
-		}
-
-		if target > 0 && migration.Version > target {
-			break
-		}
-
-		fmt.Printf("=== Version %d: %s (%s) ===\n", migration.Version, migration.Description, migration.Source.Type)
-
-		switch migration.Source.Type {
-		case MigrationSourceTypeSQL:
-			fmt.Println(strings.TrimSpace(migration.Source.UpSQL))
-		case MigrationSourceTypeGo:
-			dc := &dryRunConn{}
-			if err := migration.Source.UpFunc(ctx, dc); err != nil {
-				fmt.Printf("-- dry-run error: %v\n", err)
-			}
-			for i, stmt := range dc.statements {
-				if i > 0 {
-					fmt.Println()
-				}
-				fmt.Println(stmt)
-			}
-		}
-
-		fmt.Println()
-		pendingCount++
-	}
-
-	if pendingCount == 0 {
-		log.Println("No pending migrations")
-	}
-
-	return nil
+// Reset reverts all applied migrations.
+func (m *Migrator) Reset(ctx context.Context) error {
+	return m.down(ctx, 0, 0)
 }
 
 // Status prints a table showing each migration's version, description,
