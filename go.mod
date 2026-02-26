@@ -1,6 +1,6 @@
 module github.com/arsura/clicko
 
-go 1.26
+go 1.25
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.42.0
