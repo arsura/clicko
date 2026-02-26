@@ -104,9 +104,16 @@ func (s *store) EnsureTable(ctx context.Context) error {
 }
 
 // GetAppliedVersions returns all applied migrations keyed by version number.
+// In cluster mode, select_sequential_consistency=1 ensures we read the latest complete
+// data when connecting through a load balancer to arbitrary replicas.
 func (s *store) GetAppliedVersions(ctx context.Context) (map[uint64]*Migration, error) {
-	query := fmt.Sprintf("SELECT version, description, applied_at FROM %s ORDER BY version DESC", s.config.TableName)
+	if s.config.IsCluster() {
+		ctx = clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{
+			"select_sequential_consistency": 1,
+		}))
+	}
 
+	query := fmt.Sprintf("SELECT version, description, applied_at FROM %s ORDER BY version DESC", s.config.TableName)
 	rows, err := s.conn.Query(ctx, query)
 	if err != nil {
 		return nil, err

@@ -93,6 +93,14 @@ Instead, run migrations as a **dedicated, single-process step** in your CI/CD pi
 
 If you use the Go library, run it from a CI job — not as part of your application code.
 
+### ClickHouse Cloud
+
+When using **ClickHouse Cloud**, you do not need to configure `--cluster`, `--engine`, or `--insert-quorum` — replication and clustering are managed automatically. Just connect with your URI and run migrations:
+
+```bash
+clicko --uri "clickhouse://default:YOUR_PASSWORD@YOUR_SERVICE.clickhouse.cloud:9440/default?secure=true" --dir migrations up
+```
+
 ## CLI usage
 
 ```
