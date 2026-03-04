@@ -378,7 +378,7 @@ func (s *CLIClusterSuite) TestUpWithDefaultClusterEngine() {
 	out, err := runCLI(s.binaryPath, args...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(),
-		"WARNING: no custom engine specified for cluster mode; falling back to the default engine whose ZooKeeper path includes {shard}, which may result in separate replication groups per shard and inconsistent migration state across nodes — set a custom engine with a unified ZooKeeper path to avoid this\n"+
+		"Warning: no custom engine specified for cluster mode; falling back to the default engine whose ZooKeeper path includes {shard}, which may result in separate replication groups per shard and inconsistent migration state across nodes — set a custom engine with a unified ZooKeeper path to avoid this\n"+
 			"Applying migration 1: create test table\n"+
 			"OK\n"+
 			"Applying migration 2: add email column\n"+

@@ -9,40 +9,11 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/arsura/clicko"
+	"github.com/arsura/clicko/internal/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
-
-type mockStore struct {
-	applied map[uint64]*clicko.Migration
-}
-
-func (s *mockStore) EnsureTable(_ context.Context) error { return nil }
-func (s *mockStore) GetAppliedVersions(_ context.Context) (map[uint64]*clicko.Migration, error) {
-	if s.applied == nil {
-		return make(map[uint64]*clicko.Migration), nil
-	}
-	return s.applied, nil
-}
-func (s *mockStore) Add(_ context.Context, _ uint64, _ string) error { return nil }
-func (s *mockStore) Remove(_ context.Context, _ uint64) error        { return nil }
-
-func captureStdout(t *testing.T, fn func()) string {
-	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	os.Stdout = w
-
-	fn()
-
-	w.Close()
-	out, err := io.ReadAll(r)
-	require.NoError(t, err)
-	os.Stdout = old
-	return string(out)
-}
 
 type DryRunGoMigrationSuite struct {
 	suite.Suite
@@ -70,7 +41,7 @@ func (s *DryRunGoMigrationSuite) TestUpCapturesExecSQL() {
 		},
 	)
 
-	m := clicko.NewMigrator(nil, clicko.NewGoLoader(), &mockStore{})
+	m := clicko.NewMigrator(nil, clicko.NewGoLoader(), &mock.MockStore{})
 	m.SetDryRun(true)
 
 	out := captureStdout(s.T(), func() {
@@ -83,6 +54,22 @@ func (s *DryRunGoMigrationSuite) TestUpCapturesExecSQL() {
 	assert.Equal(s.T(), expected, out)
 }
 
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = w
+
+	fn()
+
+	w.Close()
+	out, err := io.ReadAll(r)
+	require.NoError(t, err)
+	os.Stdout = old
+	return string(out)
+}
+
 func (s *DryRunGoMigrationSuite) TestDownCapturesExecSQL() {
 	clicko.RegisterNamedMigration("00001_create_users.go",
 		func(ctx context.Context, conn clickhouse.Conn) error {
@@ -93,8 +80,8 @@ func (s *DryRunGoMigrationSuite) TestDownCapturesExecSQL() {
 		},
 	)
 
-	store := &mockStore{
-		applied: map[uint64]*clicko.Migration{
+	store := &mock.MockStore{
+		Applied: map[uint64]*clicko.Migration{
 			1: {Version: 1, Description: "create users"},
 		},
 	}
@@ -122,7 +109,7 @@ func (s *DryRunGoMigrationSuite) TestUpCapturesMultipleStatements() {
 		nil,
 	)
 
-	m := clicko.NewMigrator(nil, clicko.NewGoLoader(), &mockStore{})
+	m := clicko.NewMigrator(nil, clicko.NewGoLoader(), &mock.MockStore{})
 	m.SetDryRun(true)
 
 	out := captureStdout(s.T(), func() {
@@ -144,7 +131,7 @@ func (s *DryRunGoMigrationSuite) TestUpCapturesSQLWithArgs() {
 		nil,
 	)
 
-	m := clicko.NewMigrator(nil, clicko.NewGoLoader(), &mockStore{})
+	m := clicko.NewMigrator(nil, clicko.NewGoLoader(), &mock.MockStore{})
 	m.SetDryRun(true)
 
 	out := captureStdout(s.T(), func() {
@@ -166,7 +153,7 @@ func (s *DryRunGoMigrationSuite) TestUpDoesNotModifyState() {
 		nil,
 	)
 
-	store := &mockStore{}
+	store := &mock.MockStore{}
 	m := clicko.NewMigrator(nil, clicko.NewGoLoader(), store)
 	m.SetDryRun(true)
 
