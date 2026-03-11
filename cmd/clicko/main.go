@@ -12,7 +12,8 @@ import (
 )
 
 type CLI struct {
-	URI             string `help:"ClickHouse URI (e.g. clickhouse://user:pass@host:9000/db)" required:"" name:"uri"`
+	Version         kong.VersionFlag `name:"version" short:"v" help:"Show version and quit."`
+	URI             string           `help:"ClickHouse URI (e.g. clickhouse://user:pass@host:9000/db)" required:"" name:"uri"`
 	Dir             string `help:"Directory with migration files." default:"migrations" name:"dir"`
 	Table           string `help:"Migrations table name." default:"migration_versions" name:"table"`
 	Cluster         string `help:"ClickHouse cluster name (enables ON CLUSTER)." name:"cluster"`
@@ -108,7 +109,10 @@ func run(globals *CLI, fn func(context.Context, *clicko.Migrator) error) error {
 
 func main() {
 	var cli CLI
-	ctx := kong.Parse(&cli, kong.UsageOnError())
+	ctx := kong.Parse(&cli,
+		kong.UsageOnError(),
+		kong.Vars{"version": getVersion()},
+	)
 	err := ctx.Run(&cli)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
