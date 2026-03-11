@@ -14,10 +14,11 @@ import (
 // Migrator orchestrates loading migrations (SQL files or Go functions),
 // comparing them against the applied state in ClickHouse, and executing them.
 type Migrator struct {
-	loader Loader
-	store  Store
-	conn   clickhouse.Conn
-	dryRun bool
+	loader          Loader
+	store           Store
+	conn            clickhouse.Conn
+	dryRun          bool
+	allowOutOfOrder bool
 }
 
 // NewMigrator creates a Migrator with the given connection, loader, and store.
@@ -36,6 +37,15 @@ func (m *Migrator) SetDryRun(enabled bool) {
 	m.dryRun = enabled
 }
 
+// SetAllowOutOfOrder controls whether out-of-order migrations are permitted.
+// By default this is false: if a pending migration has a lower version number
+// than the highest already-applied version, Up and UpTo return an error.
+// Enable this flag only when you are certain the migration is independent of
+// any previously applied version.
+func (m *Migrator) SetAllowOutOfOrder(enabled bool) {
+	m.allowOutOfOrder = enabled
+}
+
 // Up applies all pending migrations.
 func (m *Migrator) Up(ctx context.Context) error {
 	return m.up(ctx, 0)
@@ -45,6 +55,11 @@ func (m *Migrator) Up(ctx context.Context) error {
 // target=0 means apply all pending migrations without an upper bound.
 func (m *Migrator) up(ctx context.Context, target uint64) error {
 	migrations, applied, err := m.loadState(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = m.checkOutOfOrder(migrations, applied)
 	if err != nil {
 		return err
 	}
@@ -253,6 +268,48 @@ func (m *Migrator) DownTo(ctx context.Context, target uint64) error {
 // Reset reverts all applied migrations.
 func (m *Migrator) Reset(ctx context.Context) error {
 	return m.down(ctx, 0, 0)
+}
+
+// checkOutOfOrder detects pending migrations whose version is lower than the
+// highest already-applied version. When allowOutOfOrder is false it returns an
+// error listing every offending version; when true it logs a warning for each.
+func (m *Migrator) checkOutOfOrder(migrations []*Migration, applied map[uint64]*Migration) error {
+	var maxApplied uint64
+	for v := range applied {
+		if v > maxApplied {
+			maxApplied = v
+		}
+	}
+
+	if maxApplied == 0 {
+		return nil
+	}
+
+	var outOfOrder []uint64
+	for _, migration := range migrations {
+		if _, ok := applied[migration.Version]; ok {
+			continue
+		}
+		if migration.Version < maxApplied {
+			outOfOrder = append(outOfOrder, migration.Version)
+		}
+	}
+
+	if len(outOfOrder) == 0 {
+		return nil
+	}
+
+	if !m.allowOutOfOrder {
+		return fmt.Errorf(
+			"out-of-order migration detected: version(s) %v are pending but version %d is already applied; verify that the migration is independent of any previously applied changes before proceeding — if intentional, use --allow-out-of-order (CLI) or SetAllowOutOfOrder(true) (Go) to apply anyway",
+			outOfOrder, maxApplied,
+		)
+	}
+
+	for _, v := range outOfOrder {
+		log.Printf("Warning: applying out-of-order migration %d (version %d is already applied)", v, maxApplied)
+	}
+	return nil
 }
 
 // Status prints a table showing each migration's version, description,

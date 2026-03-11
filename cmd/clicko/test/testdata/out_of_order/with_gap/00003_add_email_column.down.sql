@@ -1,0 +1,1 @@
+ALTER TABLE oot_main DROP COLUMN IF EXISTS email;

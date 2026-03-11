@@ -58,7 +58,7 @@ func (c StoreConfig) ResolveEngine() string {
 		return c.CustomEngine
 	}
 	if c.IsCluster() {
-		log.Printf("WARNING: no custom engine specified for cluster mode; falling back to the default engine whose ZooKeeper path includes {shard}, which may result in separate replication groups per shard and inconsistent migration state across nodes — set a custom engine with a unified ZooKeeper path to avoid this")
+		log.Printf("Warning: no custom engine specified for cluster mode; falling back to the default engine whose ZooKeeper path includes {shard}, which may result in separate replication groups per shard and inconsistent migration state across nodes — set a custom engine with a unified ZooKeeper path to avoid this")
 		return defaultClusterEngine
 	}
 	return defaultMergeTreeEngine

@@ -2,7 +2,7 @@
   <img src="assets/clicko_no_smoking.png" alt="clicko no smoking" width="500" />
 </p>
 
-A ClickHouse migration tool friendly for self-hosted sharded clusters, inspired by [pressly/goose](https://github.com/pressly/goose). Works with ClickHouse Cloud too. Supports engine selection, insert quorum, `ON CLUSTER` DDL, and both SQL file and Go function migrations.
+A ClickHouse migration tool friendly for self-hosted sharded clusters, inspired by [pressly/goose](https://github.com/pressly/goose). Works with ClickHouse Cloud too. Supports engine selection, insert quorum, `ON CLUSTER` DDL, both SQL file and Go function migrations.
 
 [![Test](https://github.com/arsura/clicko/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/arsura/clicko/actions/workflows/test.yaml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/arsura/clicko)](https://goreportcard.com/report/github.com/arsura/clicko)
@@ -118,6 +118,7 @@ clicko --uri <uri> [flags] <command>
 | `--engine` |   | Custom table engine for the tracking table |
 | `--insert-quorum` |   | Write quorum for cluster inserts (number or `"auto"`) |
 | `--dry-run` |   | Print the SQL each command would execute without applying |
+| `--allow-out-of-order` |   | Allow pending migrations with a lower version than the highest applied version |
 | `--help` |   | Show help |
 
 ### Commands

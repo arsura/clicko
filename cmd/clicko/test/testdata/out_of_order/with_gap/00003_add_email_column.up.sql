@@ -1,0 +1,1 @@
+ALTER TABLE oot_main ADD COLUMN IF NOT EXISTS email String DEFAULT '';

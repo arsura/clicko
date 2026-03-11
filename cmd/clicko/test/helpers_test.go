@@ -3,10 +3,12 @@ package clicko_test
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +16,13 @@ import (
 	ch "github.com/arsura/clicko/internal/clickhouse"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	os.Remove(filepath.Join(os.TempDir(), "clicko"))
+	os.Remove(filepath.Join(os.TempDir(), "clicko.exe"))
+	os.Exit(code)
+}
 
 const (
 	testAdminURI     = "clickhouse://default:@localhost:29000/default"
@@ -26,6 +35,7 @@ const (
 	testDryRunMigrationTable               = "dry_run_migration_versions"
 	testForwardOnlyMigrationTable          = "forward_only_migration_versions"
 	testDefaultEngineClusterMigrationTable = "default_engine_cluster_migration_versions"
+	testOutOfOrderMigrationTable           = "out_of_order_migration_versions"
 )
 
 // flagsUsage is the shared flags section that appears in every usage context.
@@ -48,6 +58,8 @@ const flagsUsage = `Flags:
                                 integer or 'auto'.
       --dry-run                 Print the SQL each command would execute without
                                 applying.
+      --allow-out-of-order      Allow pending migrations with a lower version
+                                than the highest applied version.
 `
 
 // globalUsage is the full help text shown when no command is given or an unknown command is used.
@@ -109,21 +121,43 @@ func testDir() string {
 	return filepath.Dir(filename)
 }
 
-// buildClicko compiles the CLI binary into a temp directory and returns its path.
+var (
+	cachedBinaryPath string
+	cachedBinaryErr  error
+	buildOnce        sync.Once
+)
+
+// buildClicko compiles the CLI binary once per test process and returns its
+// path. Subsequent calls reuse the cached binary without rebuilding. If the
+// binary already exists on disk from a previous run it is reused directly,
+// skipping the build step entirely.
 func buildClicko(t *testing.T) string {
 	t.Helper()
 
-	binPath := filepath.Join(t.TempDir(), "clicko")
-	if runtime.GOOS == "windows" {
-		binPath += ".exe"
-	}
+	buildOnce.Do(func() {
+		binPath := filepath.Join(os.TempDir(), "clicko")
+		if runtime.GOOS == "windows" {
+			binPath += ".exe"
+		}
 
-	cmd := exec.Command("go", "build", "-o", binPath, "../.")
-	cmd.Dir = testDir()
-	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, "failed to build binary: %s", string(out))
+		if _, err := os.Stat(binPath); err == nil {
+			cachedBinaryPath = binPath
+			return
+		}
 
-	return binPath
+		cmd := exec.Command("go", "build", "-o", binPath, "../.")
+		cmd.Dir = testDir()
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			cachedBinaryErr = fmt.Errorf("failed to build binary: %s", string(out))
+			return
+		}
+
+		cachedBinaryPath = binPath
+	})
+
+	require.NoError(t, cachedBinaryErr, "clicko binary build failed")
+	return cachedBinaryPath
 }
 
 // dialClickHouse opens a direct connection to ClickHouse for verification queries.
@@ -198,6 +232,16 @@ func dryRunArgs(uri, migrationsDir string, command ...string) []string {
 		"--uri", uri,
 		"--dir", migrationsDir,
 		"--table", testDryRunMigrationTable,
+	)
+	return args
+}
+
+// outOfOrderArgs returns CLI flags for the out-of-order migration test suite.
+func outOfOrderArgs(uri, migrationsDir string, command ...string) []string {
+	args := append(command,
+		"--uri", uri,
+		"--dir", migrationsDir,
+		"--table", testOutOfOrderMigrationTable,
 	)
 	return args
 }
