@@ -59,7 +59,7 @@ func (s *CheckOutOfOrderSuite) TestSingleVersionReturnsError() {
 	m := clicko.NewMigrator(nil, loader, store)
 	err := m.Up(context.Background())
 	require.Error(s.T(), err)
-	assert.Contains(s.T(), err.Error(), "version(s) [2] are pending but version 3 is already applied")
+	assert.Contains(s.T(), err.Error(), "version(s) [2] are pending but version 3 is already applied; verify that the migration is independent of any previously applied changes before proceeding")
 }
 
 func (s *CheckOutOfOrderSuite) TestMultipleVersionsReturnsError() {
@@ -75,7 +75,7 @@ func (s *CheckOutOfOrderSuite) TestMultipleVersionsReturnsError() {
 	m := clicko.NewMigrator(nil, loader, store)
 	err := m.Up(context.Background())
 	require.Error(s.T(), err)
-	assert.Contains(s.T(), err.Error(), "version(s) [2 3 4] are pending but version 5 is already applied")
+	assert.Contains(s.T(), err.Error(), "version(s) [2 3 4] are pending but version 5 is already applied; verify that the migration is independent of any previously applied changes before proceeding")
 }
 
 func (s *CheckOutOfOrderSuite) TestSingleVersionAllowFlagReturnsNil() {

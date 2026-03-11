@@ -301,7 +301,7 @@ func (m *Migrator) checkOutOfOrder(migrations []*Migration, applied map[uint64]*
 
 	if !m.allowOutOfOrder {
 		return fmt.Errorf(
-			"out-of-order migration detected: version(s) %v are pending but version %d is already applied; use --allow-out-of-order (CLI) or SetAllowOutOfOrder(true) (Go) to apply anyway",
+			"out-of-order migration detected: version(s) %v are pending but version %d is already applied; verify that the migration is independent of any previously applied changes before proceeding — if intentional, use --allow-out-of-order (CLI) or SetAllowOutOfOrder(true) (Go) to apply anyway",
 			outOfOrder, maxApplied,
 		)
 	}

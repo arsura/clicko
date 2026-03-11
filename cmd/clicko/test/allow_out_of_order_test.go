@@ -72,7 +72,7 @@ func (s *CLIAllowOutOfOrderSuite) TestUpErrorsOnOutOfOrder() {
 
 	out, err := runCLI(s.binaryPath, outOfOrderArgs(s.testDBURI, s.withGapDir, "up")...)
 	require.Error(s.T(), err)
-	require.Contains(s.T(), out, "out-of-order migration detected: version(s) [2] are pending but version 3 is already applied")
+	require.Contains(s.T(), out, "out-of-order migration detected: version(s) [2] are pending but version 3 is already applied; verify that the migration is independent of any previously applied changes before proceeding")
 
 	// v2 must NOT have been applied.
 	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testOutOfOrderMigrationTable)
@@ -114,7 +114,7 @@ func (s *CLIAllowOutOfOrderSuite) TestUpToErrorsOnOutOfOrder() {
 
 	out, err := runCLI(s.binaryPath, outOfOrderArgs(s.testDBURI, s.withGapDir, "up-to", "3")...)
 	require.Error(s.T(), err)
-	require.Contains(s.T(), out, "out-of-order migration detected: version(s) [2] are pending but version 3 is already applied")
+	require.Contains(s.T(), out, "out-of-order migration detected: version(s) [2] are pending but version 3 is already applied; verify that the migration is independent of any previously applied changes before proceeding")
 
 	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testOutOfOrderMigrationTable)
 	assertAppliedMigrations(s.T(), actual, ootInitialMigrations)
@@ -147,7 +147,7 @@ func (s *CLIAllowOutOfOrderSuite) TestDryRunErrorsOnOutOfOrder() {
 
 	out, err := runCLI(s.binaryPath, outOfOrderArgs(s.testDBURI, s.withGapDir, "up", "--dry-run")...)
 	require.Error(s.T(), err)
-	require.Contains(s.T(), out, "out-of-order migration detected: version(s) [2] are pending but version 3 is already applied")
+	require.Contains(s.T(), out, "out-of-order migration detected: version(s) [2] are pending but version 3 is already applied; verify that the migration is independent of any previously applied changes before proceeding")
 }
 
 func (s *CLIAllowOutOfOrderSuite) TestDryRunShowsSQLWithFlag() {
