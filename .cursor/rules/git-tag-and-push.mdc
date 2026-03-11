@@ -1,0 +1,42 @@
+---
+description: Create an annotated git tag with a descriptive message and push to remote. Run this command to tag a new release version.
+alwaysApply: false
+---
+
+# Git Tag and Push
+
+## Steps
+
+1. Check recent commits and existing tags to understand what changed:
+
+```bash
+git log --oneline -10
+git tag --sort=-version:refname | head -5
+```
+
+2. Create an annotated tag with a descriptive message (infer version bump and description from commits):
+
+```bash
+git tag -a vX.Y.Z -m "$(cat <<'EOF'
+vX.Y.Z
+
+<Short summary line>
+
+- Change 1
+- Change 2
+- Change 3
+EOF
+)"
+```
+
+3. Push the tag to remote:
+
+```bash
+git push origin vX.Y.Z
+```
+
+## Notes
+
+- Always use annotated tags (`-a`), not lightweight tags
+- Infer patch/minor/major bump from the actual changes
+- Write the description from real commits since the previous tag
