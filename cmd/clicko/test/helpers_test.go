@@ -41,6 +41,7 @@ const (
 // flagsUsage is the shared flags section that appears in every usage context.
 const flagsUsage = `Flags:
   -h, --help                    Show context-sensitive help.
+  -v, --version                 Show version and quit.
       --uri=STRING              ClickHouse URI (e.g.
                                 clickhouse://user:pass@host:9000/db)
       --dir="migrations"        Directory with migration files.
