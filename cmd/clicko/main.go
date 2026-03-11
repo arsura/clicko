@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime/debug"
 
 	"github.com/alecthomas/kong"
 
@@ -14,13 +15,13 @@ import (
 type CLI struct {
 	Version         kong.VersionFlag `name:"version" short:"v" help:"Show version and quit."`
 	URI             string           `help:"ClickHouse URI (e.g. clickhouse://user:pass@host:9000/db)" required:"" name:"uri"`
-	Dir             string `help:"Directory with migration files." default:"migrations" name:"dir"`
-	Table           string `help:"Migrations table name." default:"migration_versions" name:"table"`
-	Cluster         string `help:"ClickHouse cluster name (enables ON CLUSTER)." name:"cluster"`
-	Engine          string `help:"Custom table engine (overrides default MergeTree)." name:"engine"`
-	InsertQuorum    string `help:"Insert quorum for cluster writes (--cluster required). Set to the total number of nodes in the cluster (shards x replicas) so every node acknowledges the write — this works because the migration table is replicated across all nodes via a single ZooKeeper path. Accepts a positive integer or 'auto'." name:"insert-quorum"`
-	DryRun          bool   `help:"Print the SQL each command would execute without applying." name:"dry-run"`
-	AllowOutOfOrder bool   `help:"Allow pending migrations with a lower version than the highest applied version." name:"allow-out-of-order"`
+	Dir             string           `help:"Directory with migration files." default:"migrations" name:"dir"`
+	Table           string           `help:"Migrations table name." default:"migration_versions" name:"table"`
+	Cluster         string           `help:"ClickHouse cluster name (enables ON CLUSTER)." name:"cluster"`
+	Engine          string           `help:"Custom table engine (overrides default MergeTree)." name:"engine"`
+	InsertQuorum    string           `help:"Insert quorum for cluster writes (--cluster required). Set to the total number of nodes in the cluster (shards x replicas) so every node acknowledges the write — this works because the migration table is replicated across all nodes via a single ZooKeeper path. Accepts a positive integer or 'auto'." name:"insert-quorum"`
+	DryRun          bool             `help:"Print the SQL each command would execute without applying." name:"dry-run"`
+	AllowOutOfOrder bool             `help:"Allow pending migrations with a lower version than the highest applied version." name:"allow-out-of-order"`
 
 	Up     UpCmd     `cmd:"" help:"Apply all pending migrations."`
 	UpTo   UpToCmd   `cmd:"up-to" help:"Apply migrations up to a specific version."`
@@ -118,4 +119,16 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+var version = "dev"
+
+func getVersion() string {
+	if version != "dev" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return version
 }
