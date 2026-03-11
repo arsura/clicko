@@ -14,11 +14,16 @@ type MockStore struct {
 
 func (s *MockStore) EnsureTable(_ context.Context) error { return nil }
 func (s *MockStore) GetAppliedVersions(_ context.Context) (map[uint64]*clicko.Migration, error) {
-	if s.Applied == nil {
-		return make(map[uint64]*clicko.Migration), nil
+	out := make(map[uint64]*clicko.Migration, len(s.Applied))
+	for k, v := range s.Applied {
+		out[k] = v
 	}
-	return s.Applied, nil
+	return out, nil
 }
+
+// Add and Remove are intentional no-ops. They do not mutate Applied, so tests
+// that need to assert post-Up state should set Applied directly rather than
+// relying on these methods to update it.
 func (s *MockStore) Add(_ context.Context, _ uint64, _ string) error { return nil }
 func (s *MockStore) Remove(_ context.Context, _ uint64) error        { return nil }
 
