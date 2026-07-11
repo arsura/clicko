@@ -173,6 +173,13 @@ func (s *store) GetAppliedVersions(ctx context.Context) (map[uint64]*Migration, 
 		applied[m.Version] = &m
 	}
 
+	// A mid-stream error makes Next return false with a partial result; without
+	// this check the migrator would treat missing rows as unapplied and re-run
+	// already-applied migrations.
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return applied, nil
 }
 
