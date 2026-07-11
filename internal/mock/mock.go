@@ -2,6 +2,7 @@ package mock
 
 import (
 	"context"
+	"maps"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/arsura/clicko"
@@ -10,14 +11,21 @@ import (
 // MockStore is an in-memory Store implementation for use in tests.
 type MockStore struct {
 	Applied map[uint64]*clicko.Migration
+	// TableMissing simulates the tracking table not existing yet;
+	// TableExists returns its negation.
+	TableMissing bool
 }
 
 func (s *MockStore) EnsureTable(_ context.Context) error { return nil }
+func (s *MockStore) TableExists(_ context.Context) (bool, error) {
+	return !s.TableMissing, nil
+}
+func (s *MockStore) CreateTableDDL() string {
+	return "CREATE TABLE IF NOT EXISTS mock_migration_versions (version UInt64) ENGINE = MergeTree() ORDER BY version"
+}
 func (s *MockStore) GetAppliedVersions(_ context.Context) (map[uint64]*clicko.Migration, error) {
 	out := make(map[uint64]*clicko.Migration, len(s.Applied))
-	for k, v := range s.Applied {
-		out[k] = v
-	}
+	maps.Copy(out, s.Applied)
 	return out, nil
 }
 

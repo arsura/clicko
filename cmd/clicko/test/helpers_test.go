@@ -287,6 +287,20 @@ func queryAppliedMigrationsFrom(t *testing.T, conn clickhouse.Conn, table string
 	return migrations
 }
 
+// assertTableNotExists verifies that the given table does not exist in the
+// given database. Used by dry-run tests to prove no DDL reached the server.
+func assertTableNotExists(t *testing.T, conn clickhouse.Conn, database, table string) {
+	t.Helper()
+
+	var count uint64
+	err := conn.QueryRow(context.Background(),
+		"SELECT count() FROM system.tables WHERE database = ? AND name = ?",
+		database, table,
+	).Scan(&count)
+	require.NoError(t, err)
+	require.Zero(t, count, "table %s.%s must not exist", database, table)
+}
+
 // assertAppliedMigrations verifies that the actual rows match the expected
 // version and description, and that applied_at is populated.
 func assertAppliedMigrations(t *testing.T, actual []appliedMigration, expected []appliedMigration) {

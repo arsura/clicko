@@ -96,11 +96,12 @@ func (m *Migrator) up(ctx context.Context, target uint64) error {
 	return nil
 }
 
-// loadState ensures the tracking table exists, then returns all known migrations
-// from the loader alongside a map of already-applied versions keyed by version number.
+// loadState returns all known migrations from the loader alongside a map of
+// already-applied versions keyed by version number.
 func (m *Migrator) loadState(ctx context.Context) ([]*Migration, map[uint64]*Migration, error) {
-	if err := m.store.EnsureTable(ctx); err != nil {
-		return nil, nil, fmt.Errorf("failed to ensure migration table: %w", err)
+	applied, err := m.loadAppliedVersions(ctx)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	migrations, err := m.loader.Load()
@@ -108,12 +109,52 @@ func (m *Migrator) loadState(ctx context.Context) ([]*Migration, map[uint64]*Mig
 		return nil, nil, fmt.Errorf("failed to load migrations: %w", err)
 	}
 
-	applied, err := m.store.GetAppliedVersions(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get applied versions: %w", err)
+	return migrations, applied, nil
+}
+
+// loadAppliedVersions creates the tracking table if missing, then reads the
+// applied migrations from it. Dry-run mode must not write to the server, so it
+// delegates to dryRunAppliedVersions instead.
+func (m *Migrator) loadAppliedVersions(ctx context.Context) (map[uint64]*Migration, error) {
+	if m.dryRun {
+		return m.dryRunAppliedVersions(ctx)
 	}
 
-	return migrations, applied, nil
+	if err := m.store.EnsureTable(ctx); err != nil {
+		return nil, fmt.Errorf("failed to ensure migration table: %w", err)
+	}
+
+	applied, err := m.store.GetAppliedVersions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get applied versions: %w", err)
+	}
+
+	return applied, nil
+}
+
+// dryRunAppliedVersions is the read-only variant of loadAppliedVersions:
+// instead of creating the tracking table it checks for its existence. When the
+// table is missing, the CREATE TABLE DDL is printed as part of the preview and
+// every migration is treated as pending.
+func (m *Migrator) dryRunAppliedVersions(ctx context.Context) (map[uint64]*Migration, error) {
+	exists, err := m.store.TableExists(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check migration table: %w", err)
+	}
+
+	if !exists {
+		fmt.Println("=== Migration tracking table (would be created on apply) ===")
+		fmt.Println(m.store.CreateTableDDL())
+		fmt.Println()
+		return make(map[uint64]*Migration), nil
+	}
+
+	applied, err := m.store.GetAppliedVersions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get applied versions: %w", err)
+	}
+
+	return applied, nil
 }
 
 // printMigrationSQL prints the SQL a migration would execute in the given

@@ -1,6 +1,7 @@
 package clicko_test
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
@@ -49,6 +50,16 @@ func (s *CLIDryRunSuite) SetupTest() {
 // Expected dry-run SQL fragments
 // ---------------------------------------------------------------------------
 
+// dryRunTrackingTablePreview is printed when dry-run runs against a database
+// where the tracking table does not exist yet: instead of creating it, the
+// CREATE TABLE DDL is shown as part of the preview.
+const dryRunTrackingTablePreview = "=== Migration tracking table (would be created on apply) ===\n" +
+	"CREATE TABLE IF NOT EXISTS " + testDryRunMigrationTable + " (\n" +
+	"    version UInt64,\n" +
+	"    description String,\n" +
+	"    applied_at DateTime64(6) DEFAULT now64(6)\n" +
+	") ENGINE = MergeTree() ORDER BY version\n\n"
+
 const dryRunUpMigration1 = "=== Version 1: create test table (sql) ===\n" +
 	"CREATE TABLE IF NOT EXISTS standalone_table (\n" +
 	"    id UInt64,\n" +
@@ -78,19 +89,19 @@ const dryRunDownMigration3 = "=== Version 3: add age column (sql) ===\n" +
 func (s *CLIDryRunSuite) TestUpAllPending() {
 	out, err := runCLI(s.binaryPath, dryRunArgs(s.testDBURI, s.migrationsDir, "up", "--dry-run")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
-	require.Equal(s.T(), dryRunUpMigration1+dryRunUpMigration2+dryRunUpMigration3, out)
+	require.Equal(s.T(), dryRunTrackingTablePreview+dryRunUpMigration1+dryRunUpMigration2+dryRunUpMigration3, out)
 }
 
 func (s *CLIDryRunSuite) TestUpToTargetVersion() {
 	out, err := runCLI(s.binaryPath, dryRunArgs(s.testDBURI, s.migrationsDir, "up-to", "2", "--dry-run")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
-	require.Equal(s.T(), dryRunUpMigration1+dryRunUpMigration2, out)
+	require.Equal(s.T(), dryRunTrackingTablePreview+dryRunUpMigration1+dryRunUpMigration2, out)
 }
 
 func (s *CLIDryRunSuite) TestUpToVersionBeyondMax() {
 	out, err := runCLI(s.binaryPath, dryRunArgs(s.testDBURI, s.migrationsDir, "up-to", "999", "--dry-run")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
-	require.Equal(s.T(), dryRunUpMigration1+dryRunUpMigration2+dryRunUpMigration3, out)
+	require.Equal(s.T(), dryRunTrackingTablePreview+dryRunUpMigration1+dryRunUpMigration2+dryRunUpMigration3, out)
 }
 
 func (s *CLIDryRunSuite) TestUpNoPending() {
@@ -114,10 +125,32 @@ func (s *CLIDryRunSuite) TestUpPartiallyApplied() {
 func (s *CLIDryRunSuite) TestUpDoesNotModifyState() {
 	out, err := runCLI(s.binaryPath, dryRunArgs(s.testDBURI, s.migrationsDir, "up", "--dry-run")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
-	require.Equal(s.T(), dryRunUpMigration1+dryRunUpMigration2+dryRunUpMigration3, out)
+	require.Equal(s.T(), dryRunTrackingTablePreview+dryRunUpMigration1+dryRunUpMigration2+dryRunUpMigration3, out)
 
-	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testDryRunMigrationTable)
-	require.Empty(s.T(), actual, "dry-run must not apply any migrations")
+	assertTableNotExists(s.T(), s.conn, s.testDBName, testDryRunMigrationTable)
+	assertTableNotExists(s.T(), s.conn, s.testDBName, "standalone_table")
+}
+
+// TestUpClusterDoesNotCreateTrackingTable guards the worst pre-fix behaviour:
+// in cluster mode a dry-run used to execute the tracking table's ON CLUSTER
+// DDL, propagating it to every node.
+func (s *CLIDryRunSuite) TestUpClusterDoesNotCreateTrackingTable() {
+	dbName := createTestDB(s.T(), s.conn, migrationCluster)
+	uri := testURIWithDB(dbName)
+
+	out, err := runCLI(s.binaryPath, args(uri, s.migrationsDir, "up", "--dry-run")...)
+	require.NoError(s.T(), err, "cli output: %s", out)
+	require.Contains(s.T(), out, "=== Migration tracking table (would be created on apply) ===")
+	require.Contains(s.T(), out,
+		"CREATE TABLE IF NOT EXISTS "+testClusterMigrationTable+" ON CLUSTER `"+migrationCluster+"`")
+
+	var count uint64
+	err = s.conn.QueryRow(context.Background(),
+		"SELECT count() FROM clusterAllReplicas('"+migrationCluster+"', system.tables) WHERE database = ? AND name = ?",
+		dbName, testClusterMigrationTable,
+	).Scan(&count)
+	require.NoError(s.T(), err)
+	require.Zero(s.T(), count, "dry-run must not create the tracking table on any node")
 }
 
 // ---------------------------------------------------------------------------
@@ -154,7 +187,7 @@ func (s *CLIDryRunSuite) TestResetAllApplied() {
 func (s *CLIDryRunSuite) TestResetOnEmptyState() {
 	out, err := runCLI(s.binaryPath, dryRunArgs(s.testDBURI, s.migrationsDir, "reset", "--dry-run")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
-	require.Equal(s.T(), "No migrations to revert\n", normalizeOutput(out))
+	require.Equal(s.T(), dryRunTrackingTablePreview+"No migrations to revert\n", normalizeOutput(out))
 }
 
 func (s *CLIDryRunSuite) TestDownToVersionBeyondMax() {
@@ -169,7 +202,7 @@ func (s *CLIDryRunSuite) TestDownToVersionBeyondMax() {
 func (s *CLIDryRunSuite) TestDownNothingToRevert() {
 	out, err := runCLI(s.binaryPath, dryRunArgs(s.testDBURI, s.migrationsDir, "down", "--dry-run")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
-	require.Equal(s.T(), "No migrations to revert\n", normalizeOutput(out))
+	require.Equal(s.T(), dryRunTrackingTablePreview+"No migrations to revert\n", normalizeOutput(out))
 }
 
 func (s *CLIDryRunSuite) TestDownDoesNotModifyState() {

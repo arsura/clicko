@@ -2,6 +2,7 @@ package clicko
 
 import (
 	"fmt"
+	"maps"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -49,6 +50,7 @@ func RegisterNamedMigration(filename string, up, down GoMigrationFunc) {
 		Version:     version,
 		Description: description,
 		Source: MigrationSource{
+			Type:     MigrationSourceTypeGo,
 			UpFunc:   up,
 			DownFunc: down,
 		},
@@ -83,16 +85,14 @@ func parseFilename(filename string) (uint64, string) {
 }
 
 // getGlobalGoMigrations returns a snapshot of the current global Go
-// migration registry. The returned map is a shallow copy safe for
-// concurrent reads.
+// migration registry. The returned map is a shallow copy: the values still
+// point into the registry, so callers must copy a Migration before mutating it.
 func getGlobalGoMigrations() map[uint64]*Migration {
 	mu.Lock()
 	defer mu.Unlock()
 
 	snapshot := make(map[uint64]*Migration, len(globalGoMigrations))
-	for k, v := range globalGoMigrations {
-		snapshot[k] = v
-	}
+	maps.Copy(snapshot, globalGoMigrations)
 	return snapshot
 }
 

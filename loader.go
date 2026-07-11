@@ -173,8 +173,8 @@ func (l *goLoader) Load() ([]*Migration, error) {
 
 	migrations := make([]*Migration, 0, len(registered))
 	for _, m := range registered {
-		m.Source.Type = MigrationSourceTypeGo
-		migrations = append(migrations, m)
+		c := *m
+		migrations = append(migrations, &c)
 	}
 
 	sort.Slice(migrations, func(i, j int) bool {
