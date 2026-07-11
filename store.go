@@ -92,32 +92,78 @@ func NewStore(conn clickhouse.Conn, config StoreConfig) (Store, error) {
 		config.TableName = DefaultTableName
 	}
 
-	if !tableNameRegex.MatchString(config.TableName) {
-		return nil, fmt.Errorf("invalid table name %q: must be a plain identifier (letters, digits, underscores) with an optional database prefix, e.g. \"migrations\" or \"mydb.migrations\"", config.TableName)
-	}
-
-	if config.Cluster != "" && !identRegex.MatchString(config.Cluster) {
-		return nil, fmt.Errorf("invalid cluster name %q: must be a plain identifier (letters, digits, underscores)", config.Cluster)
-	}
-
-	if config.CustomEngine != "" {
-		if strings.Contains(config.CustomEngine, ";") || strings.Contains(config.CustomEngine, "--") || strings.Contains(config.CustomEngine, "/*") {
-			return nil, fmt.Errorf("invalid custom engine %q: must not contain statement terminators (\";\") or comment sequences (\"--\", \"/*\")", config.CustomEngine)
-		}
-	}
-
-	if config.InsertQuorum != "" {
-		if config.InsertQuorum != "auto" {
-			if _, err := strconv.ParseUint(config.InsertQuorum, 10, 64); err != nil {
-				return nil, fmt.Errorf("invalid insert quorum %q: must be a number or \"auto\"", config.InsertQuorum)
-			}
-		}
+	if err := config.validate(); err != nil {
+		return nil, err
 	}
 
 	return &store{
 		conn:   conn,
 		config: config,
 	}, nil
+}
+
+// validate checks every field that is interpolated into SQL. It assumes any
+// defaulting (e.g. TableName) has already been applied by the caller.
+func (c StoreConfig) validate() error {
+	if !tableNameRegex.MatchString(c.TableName) {
+		return fmt.Errorf("invalid table name %q: must be a plain identifier (letters, digits, underscores) with an optional database prefix, e.g. \"migrations\" or \"mydb.migrations\"", c.TableName)
+	}
+
+	if c.Cluster != "" && !identRegex.MatchString(c.Cluster) {
+		return fmt.Errorf("invalid cluster name %q: must be a plain identifier (letters, digits, underscores)", c.Cluster)
+	}
+
+	if err := c.validateCustomEngine(); err != nil {
+		return err
+	}
+
+	return c.validateInsertQuorum()
+}
+
+// validateCustomEngine rejects a CustomEngine that could break out of the DDL
+// or that includes a clause clicko manages itself.
+func (c StoreConfig) validateCustomEngine() error {
+	if c.CustomEngine == "" {
+		return nil
+	}
+
+	if strings.Contains(c.CustomEngine, ";") || strings.Contains(c.CustomEngine, "--") || strings.Contains(c.CustomEngine, "/*") {
+		return fmt.Errorf("invalid custom engine %q: must not contain statement terminators (\";\") or comment sequences (\"--\", \"/*\")", c.CustomEngine)
+	}
+
+	// managedEngineClauses are CREATE TABLE clauses that clicko appends or controls
+	// itself. They must not appear in a CustomEngine, which is only the engine
+	// expression — otherwise the generated DDL would be malformed (e.g. a duplicate
+	// ORDER BY, or a SETTINGS clause placed before the appended ORDER BY).
+	managedEngineClauses := []string{"order by", "partition by", "primary key", "sample by", "settings"}
+
+	// CustomEngine must be the engine expression only. clicko controls the
+	// tracking table's schema and appends "ORDER BY version" itself, so any
+	// managed clause here would produce a malformed DDL. Reject it upfront with a
+	// clear message instead of surfacing a confusing server-side parse error.
+	lowerEngine := strings.ToLower(c.CustomEngine)
+	for _, clause := range managedEngineClauses {
+		if strings.Contains(lowerEngine, clause) {
+			return fmt.Errorf("invalid custom engine %q: must contain only the engine expression; the %q clause is managed by clicko and must not be included", c.CustomEngine, clause)
+		}
+	}
+
+	return nil
+}
+
+// validateInsertQuorum ensures the quorum is a positive integer or "auto".
+func (c StoreConfig) validateInsertQuorum() error {
+	if c.InsertQuorum == "" || c.InsertQuorum == "auto" {
+		return nil
+	}
+
+	// insert_quorum=0 disables quorum entirely, which silently defeats the
+	// consistency guarantee this flag exists to provide, so require >= 1.
+	if q, err := strconv.ParseUint(c.InsertQuorum, 10, 64); err != nil || q < 1 {
+		return fmt.Errorf("invalid insert quorum %q: must be a positive integer (>= 1) or \"auto\"", c.InsertQuorum)
+	}
+
+	return nil
 }
 
 // EnsureTable creates the migration tracking table if it does not exist.

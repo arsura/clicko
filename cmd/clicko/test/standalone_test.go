@@ -371,6 +371,6 @@ func (s *CLIStandaloneSuite) TestInvalidInsertQuorum() {
 	)
 	require.Error(s.T(), err)
 	require.Equal(s.T(),
-		"invalid store config: invalid insert quorum \"abc\": must be a number or \"auto\"\n",
+		"invalid store config: invalid insert quorum \"abc\": must be a positive integer (>= 1) or \"auto\"\n",
 		out)
 }

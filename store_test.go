@@ -90,10 +90,6 @@ func TestNewStore_ValidatesConfigValid(t *testing.T) {
 			name:   "custom engine with legitimate syntax is valid",
 			config: StoreConfig{CustomEngine: "ReplicatedMergeTree('/clickhouse/tables/{database}/{table}', '{replica}')"},
 		},
-		{
-			name:   "custom engine with settings clause is valid",
-			config: StoreConfig{CustomEngine: "MergeTree() SETTINGS index_granularity = 8192"},
-		},
 		// --- InsertQuorum ---
 		{
 			name:   "numeric insert quorum is valid",
@@ -230,10 +226,30 @@ func TestNewStore_ValidatesConfigInvalid(t *testing.T) {
 			config:      StoreConfig{CustomEngine: "MergeTree() /* injected */"},
 			errContains: "invalid custom engine",
 		},
+		{
+			name:        "custom engine with settings clause is rejected",
+			config:      StoreConfig{CustomEngine: "MergeTree() SETTINGS index_granularity = 8192"},
+			errContains: "invalid custom engine",
+		},
+		{
+			name:        "custom engine with order by clause is rejected",
+			config:      StoreConfig{CustomEngine: "MergeTree() ORDER BY version"},
+			errContains: "invalid custom engine",
+		},
+		{
+			name:        "custom engine with partition by clause is rejected",
+			config:      StoreConfig{CustomEngine: "MergeTree() PARTITION BY tuple()"},
+			errContains: "invalid custom engine",
+		},
 		// --- InsertQuorum ---
 		{
 			name:        "non-numeric insert quorum is rejected",
 			config:      StoreConfig{InsertQuorum: "not-a-number"},
+			errContains: "invalid insert quorum",
+		},
+		{
+			name:        "zero insert quorum is rejected",
+			config:      StoreConfig{InsertQuorum: "0"},
 			errContains: "invalid insert quorum",
 		},
 		{
