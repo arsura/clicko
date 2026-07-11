@@ -124,7 +124,7 @@ func (s *store) EnsureTable(ctx context.Context) error {
 	createStmt := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s", s.config.TableName)
 
 	if s.config.IsCluster() {
-		createStmt += fmt.Sprintf(" ON CLUSTER `%s`", s.config.Cluster)
+		createStmt += " ON CLUSTER " + quoteIdent(s.config.Cluster)
 	}
 
 	createStmt += fmt.Sprintf(` (
@@ -134,6 +134,15 @@ func (s *store) EnsureTable(ctx context.Context) error {
 	) ENGINE = %s ORDER BY version`, s.config.ResolveEngine())
 
 	return s.conn.Exec(ctx, createStmt)
+}
+
+// quoteIdent wraps a ClickHouse identifier in backticks, escaping any embedded
+// backtick by doubling it. NewStore already restricts Cluster to a plain
+// identifier, so this is defense-in-depth for the SQL built from it: it keeps
+// the value from breaking out of the backtick quoting even if that invariant
+// were ever weakened.
+func quoteIdent(name string) string {
+	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
 }
 
 // GetAppliedVersions returns all applied migrations keyed by version number.
@@ -191,7 +200,7 @@ func (s *store) Remove(ctx context.Context, version uint64) error {
 
 	deleteStmt := fmt.Sprintf("ALTER TABLE %s", s.config.TableName)
 	if s.config.IsCluster() {
-		deleteStmt += fmt.Sprintf(" ON CLUSTER `%s`", s.config.Cluster)
+		deleteStmt += " ON CLUSTER " + quoteIdent(s.config.Cluster)
 	}
 
 	deleteStmt += fmt.Sprintf(" DELETE WHERE version = %d", version)
