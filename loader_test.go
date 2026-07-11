@@ -186,6 +186,14 @@ func (s *SQLLoaderSuite) TestErrorDownOnly() {
 	assert.ErrorContains(s.T(), err, "has no .up.sql file")
 }
 
+func (s *SQLLoaderSuite) TestErrorDuplicateDirection() {
+	loader := clicko.NewSQLLoader(testdataDir + "/err_duplicate_direction")
+
+	_, err := loader.Load()
+	assert.ErrorContains(s.T(), err, "conflicting files for migration version 1")
+	assert.ErrorContains(s.T(), err, `both define the "up" direction`)
+}
+
 func (s *SQLLoaderSuite) TestErrorMismatchedDescription() {
 	loader := clicko.NewSQLLoader(testdataDir + "/err_mismatched_description")
 

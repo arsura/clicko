@@ -82,6 +82,8 @@ func validateUpFilesExist(migrationsMap map[uint64]*Migration) error {
 //   - Every .sql file must match the naming convention exactly.
 //   - Every version must have an .up.sql file; .down.sql is optional.
 //   - The up and down files for the same version must share the same description.
+//   - Each version may have at most one file per direction. Versions are compared
+//     numerically, so "1_x.up.sql" and "01_x.up.sql" collide.
 func (l *sqlLoader) Load() ([]*Migration, error) {
 	files, err := os.ReadDir(l.dir)
 	if err != nil {
@@ -89,6 +91,10 @@ func (l *sqlLoader) Load() ([]*Migration, error) {
 	}
 
 	migrationsMap := make(map[uint64]*Migration)
+	// seenFiles maps "<version>.<direction>" to the filename that claimed it,
+	// so a second file for the same version and direction is rejected instead
+	// of silently overwriting the first.
+	seenFiles := make(map[string]string)
 
 	for _, file := range files {
 		if file.IsDir() || !strings.HasSuffix(file.Name(), ".sql") {
@@ -100,6 +106,16 @@ func (l *sqlLoader) Load() ([]*Migration, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		key := fmt.Sprintf("%d.%s", info.version, info.direction)
+		if prev, dup := seenFiles[key]; dup {
+			return nil, fmt.Errorf(
+				"conflicting files for migration version %d: %q and %q both define the %q direction"+
+					" (versions are compared numerically, so e.g. \"1\" and \"01\" collide)",
+				info.version, prev, name, info.direction,
+			)
+		}
+		seenFiles[key] = name
 
 		m, exists := migrationsMap[info.version]
 		if !exists {

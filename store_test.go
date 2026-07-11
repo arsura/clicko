@@ -1,8 +1,11 @@
 package clicko
 
 import (
+	"context"
+	"errors"
 	"testing"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -256,6 +259,49 @@ func TestNewStore_ValidatesConfigInvalid(t *testing.T) {
 			assert.Nil(t, s)
 		})
 	}
+}
+
+// fixedRowsConn is a clickhouse.Conn whose Query always returns the given
+// rows. It embeds dryRunConn for the remaining Conn methods.
+type fixedRowsConn struct {
+	dryRunConn
+	rows driver.Rows
+}
+
+func (c *fixedRowsConn) Query(_ context.Context, _ string, _ ...any) (driver.Rows, error) {
+	return c.rows, nil
+}
+
+// errRows is a driver.Rows that yields no rows and reports err from Err,
+// simulating a result stream that was cut off mid-iteration.
+type errRows struct {
+	emptyRows
+	err error
+}
+
+func (r *errRows) Err() error { return r.err }
+
+func TestStore_GetAppliedVersions_StreamError(t *testing.T) {
+	streamErr := errors.New("read: connection reset by peer")
+	conn := &fixedRowsConn{rows: &errRows{err: streamErr}}
+
+	s, err := NewStore(conn, StoreConfig{})
+	require.NoError(t, err)
+
+	applied, err := s.GetAppliedVersions(context.Background())
+	require.ErrorIs(t, err, streamErr, "a mid-stream error must not be swallowed as an empty result")
+	assert.Nil(t, applied)
+}
+
+func TestStore_GetAppliedVersions_EmptyResult(t *testing.T) {
+	conn := &fixedRowsConn{rows: &errRows{}}
+
+	s, err := NewStore(conn, StoreConfig{})
+	require.NoError(t, err)
+
+	applied, err := s.GetAppliedVersions(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, applied)
 }
 
 func TestQuoteIdent(t *testing.T) {
