@@ -257,3 +257,22 @@ func TestNewStore_ValidatesConfigInvalid(t *testing.T) {
 		})
 	}
 }
+
+func TestQuoteIdent(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "plain identifier", input: "my_cluster", expected: "`my_cluster`"},
+		{name: "empty string", input: "", expected: "``"},
+		{name: "embedded backtick is doubled", input: "a`b", expected: "`a``b`"},
+		{name: "trailing backtick breakout is neutralized", input: "c` ON CLUSTER x", expected: "`c`` ON CLUSTER x`"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, quoteIdent(tt.input))
+		})
+	}
+}

@@ -14,7 +14,7 @@ import (
 
 type CLI struct {
 	Version         kong.VersionFlag `name:"version" short:"v" help:"Show version and quit."`
-	URI             string           `help:"ClickHouse URI (e.g. clickhouse://user:pass@host:9000/db)" required:"" name:"uri"`
+	URI             string           `help:"ClickHouse URI (e.g. clickhouse://user:pass@host:9000/db). Prefer the CLICKO_URI env var so credentials do not appear in the process list or shell history." required:"" name:"uri" env:"CLICKO_URI"`
 	Dir             string           `help:"Directory with migration files." default:"migrations" name:"dir"`
 	Table           string           `help:"Migrations table name." default:"migration_versions" name:"table"`
 	Cluster         string           `help:"ClickHouse cluster name (enables ON CLUSTER)." name:"cluster"`

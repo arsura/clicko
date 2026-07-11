@@ -22,6 +22,16 @@ go install github.com/arsura/clicko/cmd/clicko@latest
 clicko --uri "clickhouse://default:@localhost:9000/default" --dir migrations up
 ```
 
+> **Keep credentials out of your shell history.** The URI contains a password, and
+> anything passed as a command-line argument is visible in the process list (`ps`)
+> and saved to shell history. Prefer the `CLICKO_URI` environment variable, which
+> `clicko` reads automatically when `--uri` is omitted:
+>
+> ```bash
+> export CLICKO_URI="clickhouse://default:PASSWORD@localhost:9000/default"
+> clicko --dir migrations up
+> ```
+
 SQL migration files follow `{version}_{description}.{up|down}.sql`:
 
 ```
@@ -52,7 +62,7 @@ clicko --uri <uri> [flags] <command>
 
 | Flag | Default | Description |
 |---|---|---|
-| `--uri` | *(required)* | Connection URI, e.g. `clickhouse://user:pass@host:9000/db` |
+| `--uri` | *(required)* | Connection URI, e.g. `clickhouse://user:pass@host:9000/db`. Can be supplied via the `CLICKO_URI` env var instead, to keep credentials out of the process list and shell history |
 | `--dir` | `migrations` | Migration files directory |
 | `--table` | `migration_versions` | Tracking table name |
 | `--cluster` | | Cluster name (enables `ON CLUSTER`) |

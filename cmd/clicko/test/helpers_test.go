@@ -43,7 +43,10 @@ const flagsUsage = `Flags:
   -h, --help                    Show context-sensitive help.
   -v, --version                 Show version and quit.
       --uri=STRING              ClickHouse URI (e.g.
-                                clickhouse://user:pass@host:9000/db)
+                                clickhouse://user:pass@host:9000/db). Prefer
+                                the CLICKO_URI env var so credentials do not
+                                appear in the process list or shell history
+                                ($CLICKO_URI).
       --dir="migrations"        Directory with migration files.
       --table="migration_versions"
                                 Migrations table name.
