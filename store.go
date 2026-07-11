@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -14,6 +16,13 @@ const (
 	DefaultTableName       = "migration_versions"
 	defaultClusterEngine   = "ReplicatedMergeTree('/clickhouse/{cluster}/table/{shard}/{database}/{table}', '{replica}')"
 	defaultMergeTreeEngine = "MergeTree()"
+)
+
+var (
+	// identRegex matches a single unquoted ClickHouse identifier.
+	identRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	// tableNameRegex matches a table name with an optional database qualifier (db.table).
+	tableNameRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$`)
 )
 
 // Store provides read/write access to the migration state stored in ClickHouse.
@@ -30,8 +39,18 @@ type store struct {
 }
 
 // StoreConfig holds configuration for the migration state store.
-// All string values that are interpolated into SQL (TableName, Cluster, InsertQuorum)
-// are validated in NewStore to prevent injection.
+//
+// Several fields are interpolated directly into SQL statements (identifiers and
+// engine clauses cannot use bound parameters). NewStore validates them to prevent
+// SQL injection:
+//   - TableName must be a plain identifier with an optional database prefix (db.table).
+//   - Cluster must be a plain identifier.
+//   - CustomEngine must not contain statement-terminating or comment sequences.
+//   - InsertQuorum must be a positive integer or "auto".
+//
+// Even so, CustomEngine is an unrestricted SQL fragment by design and should only
+// ever be set from trusted, operator-controlled configuration — never from
+// untrusted or end-user input.
 type StoreConfig struct {
 	TableName    string
 	Cluster      string
@@ -69,6 +88,20 @@ func (c StoreConfig) ResolveEngine() string {
 func NewStore(conn clickhouse.Conn, config StoreConfig) (Store, error) {
 	if config.TableName == "" {
 		config.TableName = DefaultTableName
+	}
+
+	if !tableNameRegex.MatchString(config.TableName) {
+		return nil, fmt.Errorf("invalid table name %q: must be a plain identifier (letters, digits, underscores) with an optional database prefix, e.g. \"migrations\" or \"mydb.migrations\"", config.TableName)
+	}
+
+	if config.Cluster != "" && !identRegex.MatchString(config.Cluster) {
+		return nil, fmt.Errorf("invalid cluster name %q: must be a plain identifier (letters, digits, underscores)", config.Cluster)
+	}
+
+	if config.CustomEngine != "" {
+		if strings.Contains(config.CustomEngine, ";") || strings.Contains(config.CustomEngine, "--") || strings.Contains(config.CustomEngine, "/*") {
+			return nil, fmt.Errorf("invalid custom engine %q: must not contain statement terminators (\";\") or comment sequences (\"--\", \"/*\")", config.CustomEngine)
+		}
 	}
 
 	if config.InsertQuorum != "" {
