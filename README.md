@@ -85,7 +85,7 @@ clicko \
 
 ### Dry-run
 
-`--dry-run` previews the SQL for any command without applying it. For Go migrations, every `Exec`/`Query` call is captured against a no-op connection, so even dynamically-built SQL is shown in its final form.
+`--dry-run` previews the SQL for any command without applying it. For Go migrations, every `Exec`/`Query` call is captured against a no-op connection, so even dynamically-built SQL is shown in its final form. Dry-run performs no writes at all — not even creating the migration tracking table; if the table does not exist yet, its `CREATE TABLE` DDL is shown as part of the preview.
 
 ```
 === Version 1: create users (sql) ===

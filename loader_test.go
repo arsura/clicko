@@ -250,3 +250,23 @@ func (s *GoLoaderSuite) TestPreservesGoFuncs() {
 	_ = got[0].Source.DownFunc(context.Background(), nil)
 	assert.True(s.T(), downCalled)
 }
+
+func (s *GoLoaderSuite) TestLoadReturnsIndependentCopies() {
+	up := func(ctx context.Context, conn clickhouse.Conn) error { return nil }
+	clicko.RegisterNamedMigration("00001_original.go", up, nil)
+
+	loader := clicko.NewGoLoader()
+	first, err := loader.Load()
+	require.NoError(s.T(), err)
+	require.Len(s.T(), first, 1)
+
+	// Mutating a loaded migration must not leak back into the registry.
+	first[0].Description = "mutated"
+	first[0].Source.Type = "tampered"
+
+	second, err := loader.Load()
+	require.NoError(s.T(), err)
+	require.Len(s.T(), second, 1)
+	assert.Equal(s.T(), "original", second[0].Description)
+	assert.Equal(s.T(), clicko.MigrationSourceTypeGo, second[0].Source.Type)
+}

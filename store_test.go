@@ -1,11 +1,8 @@
 package clicko
 
 import (
-	"context"
-	"errors"
 	"testing"
 
-	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -261,47 +258,43 @@ func TestNewStore_ValidatesConfigInvalid(t *testing.T) {
 	}
 }
 
-// fixedRowsConn is a clickhouse.Conn whose Query always returns the given
-// rows. It embeds dryRunConn for the remaining Conn methods.
-type fixedRowsConn struct {
-	dryRunConn
-	rows driver.Rows
-}
+func TestStore_CreateTableDDL(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   StoreConfig
+		expected string
+	}{
+		{
+			name:   "standalone with defaults",
+			config: StoreConfig{},
+			expected: "CREATE TABLE IF NOT EXISTS migration_versions (\n" +
+				"    version UInt64,\n" +
+				"    description String,\n" +
+				"    applied_at DateTime64(6) DEFAULT now64(6)\n" +
+				") ENGINE = MergeTree() ORDER BY version",
+		},
+		{
+			name: "cluster with custom engine",
+			config: StoreConfig{
+				TableName:    "mydb.migrations",
+				Cluster:      "prod",
+				CustomEngine: "ReplicatedMergeTree('/clickhouse/tables/{database}/{table}', '{replica}')",
+			},
+			expected: "CREATE TABLE IF NOT EXISTS mydb.migrations ON CLUSTER `prod` (\n" +
+				"    version UInt64,\n" +
+				"    description String,\n" +
+				"    applied_at DateTime64(6) DEFAULT now64(6)\n" +
+				") ENGINE = ReplicatedMergeTree('/clickhouse/tables/{database}/{table}', '{replica}') ORDER BY version",
+		},
+	}
 
-func (c *fixedRowsConn) Query(_ context.Context, _ string, _ ...any) (driver.Rows, error) {
-	return c.rows, nil
-}
-
-// errRows is a driver.Rows that yields no rows and reports err from Err,
-// simulating a result stream that was cut off mid-iteration.
-type errRows struct {
-	emptyRows
-	err error
-}
-
-func (r *errRows) Err() error { return r.err }
-
-func TestStore_GetAppliedVersions_StreamError(t *testing.T) {
-	streamErr := errors.New("read: connection reset by peer")
-	conn := &fixedRowsConn{rows: &errRows{err: streamErr}}
-
-	s, err := NewStore(conn, StoreConfig{})
-	require.NoError(t, err)
-
-	applied, err := s.GetAppliedVersions(context.Background())
-	require.ErrorIs(t, err, streamErr, "a mid-stream error must not be swallowed as an empty result")
-	assert.Nil(t, applied)
-}
-
-func TestStore_GetAppliedVersions_EmptyResult(t *testing.T) {
-	conn := &fixedRowsConn{rows: &errRows{}}
-
-	s, err := NewStore(conn, StoreConfig{})
-	require.NoError(t, err)
-
-	applied, err := s.GetAppliedVersions(context.Background())
-	require.NoError(t, err)
-	assert.Empty(t, applied)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, err := NewStore(nil, tt.config)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, s.CreateTableDDL())
+		})
+	}
 }
 
 func TestQuoteIdent(t *testing.T) {

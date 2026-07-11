@@ -27,10 +27,12 @@ var (
 
 // Store provides read/write access to the migration state stored in ClickHouse.
 type Store interface {
+	TableExists(ctx context.Context) (bool, error)
 	EnsureTable(ctx context.Context) error
 	GetAppliedVersions(ctx context.Context) (map[uint64]*Migration, error)
 	Add(ctx context.Context, version uint64, description string) error
 	Remove(ctx context.Context, version uint64) error
+	CreateTableDDL() string
 }
 
 type store struct {
@@ -121,19 +123,36 @@ func NewStore(conn clickhouse.Conn, config StoreConfig) (Store, error) {
 // EnsureTable creates the migration tracking table if it does not exist.
 // Engine selection: CustomEngine > ReplicatedMergeTree (when cluster is set) > MergeTree.
 func (s *store) EnsureTable(ctx context.Context) error {
+	return s.conn.Exec(ctx, s.CreateTableDDL())
+}
+
+// CreateTableDDL builds the CREATE TABLE statement for the tracking table.
+// EnsureTable executes it; dry-run mode prints it as a preview.
+func (s *store) CreateTableDDL() string {
 	createStmt := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s", s.config.TableName)
 
 	if s.config.IsCluster() {
 		createStmt += " ON CLUSTER " + quoteIdent(s.config.Cluster)
 	}
 
-	createStmt += fmt.Sprintf(` (
-		version UInt64,
-		description String,
-		applied_at DateTime64(6) DEFAULT now64(6)
-	) ENGINE = %s ORDER BY version`, s.config.ResolveEngine())
+	createStmt += fmt.Sprintf(" (\n"+
+		"    version UInt64,\n"+
+		"    description String,\n"+
+		"    applied_at DateTime64(6) DEFAULT now64(6)\n"+
+		") ENGINE = %s ORDER BY version", s.config.ResolveEngine())
 
-	return s.conn.Exec(ctx, createStmt)
+	return createStmt
+}
+
+// TableExists reports whether the tracking table exists via EXISTS TABLE,
+// which is read-only — unlike EnsureTable, it never executes DDL.
+func (s *store) TableExists(ctx context.Context) (bool, error) {
+	var exists uint8
+	query := fmt.Sprintf("EXISTS TABLE %s", s.config.TableName)
+	if err := s.conn.QueryRow(ctx, query).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists == 1, nil
 }
 
 // quoteIdent wraps a ClickHouse identifier in backticks, escaping any embedded
