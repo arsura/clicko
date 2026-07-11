@@ -2,161 +2,64 @@
   <img src="assets/clicko_no_smoking.png" alt="clicko no smoking" width="500" />
 </p>
 
-A ClickHouse migration tool friendly for self-hosted sharded clusters, inspired by [pressly/goose](https://github.com/pressly/goose). Works with ClickHouse Cloud too. Supports engine selection, insert quorum, `ON CLUSTER` DDL, both SQL file and Go function migrations.
+A ClickHouse migration tool built for self-hosted sharded clusters, inspired by [pressly/goose](https://github.com/pressly/goose). Works with ClickHouse Cloud too.
 
 [![Test](https://github.com/arsura/clicko/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/arsura/clicko/actions/workflows/test.yaml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/arsura/clicko)](https://goreportcard.com/report/github.com/arsura/clicko)
+[![Go Reference](https://pkg.go.dev/badge/github.com/arsura/clicko.svg)](https://pkg.go.dev/github.com/arsura/clicko)
 
 ## Features
 
-- **Engine selection** — Choose any ClickHouse table engine for the migration tracking table. Standalone mode defaults to `MergeTree()`; cluster mode defaults to `ReplicatedMergeTree(...)`. Override with `--engine` to control the ZooKeeper path and replication topology.
-- **Insert quorum** — Set `--insert-quorum` (a number or `"auto"`) to ensure migration records are replicated to N nodes before being considered applied. Prevents inconsistent migration state across replicas.
-- **Cluster and sharding support** — First-class `ON CLUSTER` support via `--cluster`. DDL propagates across all nodes; DELETE mutations use `mutations_sync=2` for consistency.
-- **SQL and Go migrations** — Write migrations as plain `.sql` files or as Go functions.
+- **`ON CLUSTER` support.** DDL propagates across all nodes; DELETE mutations run with `mutations_sync=2`.
+- **Engine selection.** Pick the engine for the migration tracking table: `MergeTree` standalone, `ReplicatedMergeTree` in cluster mode, or your own via `--engine`.
+- **Insert quorum.** `--insert-quorum` guarantees migration records reach N replicas before being marked applied.
+- **SQL and Go migrations.** Plain `.sql` files or Go functions, with `--dry-run` for both.
 
-## Installation
+## Quick start
 
 ```bash
 go install github.com/arsura/clicko/cmd/clicko@latest
+
+clicko --uri "clickhouse://default:@localhost:9000/default" --dir migrations up
 ```
 
-## Migration files
-
-SQL migration files follow the naming convention:
-
-```
-{version}_{description}.{up|down}.sql
-```
-
-Example directory:
+SQL migration files follow `{version}_{description}.{up|down}.sql`:
 
 ```
 migrations/
 ├── 00001_create_users.up.sql
 ├── 00001_create_users.down.sql
-├── 00002_create_orders.up.sql
-├── 00002_create_orders.down.sql
-└── 00003_add_users_age_column.up.sql
+└── 00002_create_orders.up.sql
 ```
 
-## Recommendations
-
-### Forward-only migrations
-
-clicko supports `down` migrations, but for ClickHouse in production you may want to avoid writing them altogether.
-
-ClickHouse tables tend to be large, and many DDL operations (like `DROP COLUMN` or `ALTER TABLE ... DELETE`) are executed as background mutations that can take a long time to complete and cannot be easily interrupted. Rolling back a migration by running a `down` file does not instantly undo the change — it queues another mutation on top, which can leave the cluster in an inconsistent state during the window between the two operations.
-
-A **forward-only** approach means every change is expressed as a new `up` migration. Instead of rolling back, you write a follow-up migration that corrects or reverts the intent. This keeps the migration history append-only, predictable, and safe to apply in automated pipelines.
-
-This is a recommendation, not a requirement. If your use case is well-suited to rollbacks (e.g. a small local cluster or a development environment), the `down` commands work fine.
-
-### Idempotent migrations
-
-ClickHouse has no transactional DDL. If a migration with multiple statements fails halfway, the already-applied statements won't roll back. Re-running the migration will hit errors like "table already exists."
-
-Write every statement in an idempotent form so re-runs are safe:
-
-- `CREATE TABLE IF NOT EXISTS` instead of `CREATE TABLE`
-- `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` instead of `ALTER TABLE ... ADD COLUMN`
-- `DROP TABLE IF EXISTS` instead of `DROP TABLE`
-
-### One statement per migration
-
-When possible, put a single DDL statement in each migration file. Since ClickHouse has no transactional DDL, a file with multiple statements can fail halfway — making it harder to tell what succeeded and what didn't. One statement per file keeps failures obvious and pairs well with idempotent writes.
-
-Instead of one file with two statements:
-
-```sql
--- 00002_create_orders.up.sql
-CREATE TABLE IF NOT EXISTS orders (...) ENGINE = MergeTree() ORDER BY id;
-CREATE TABLE IF NOT EXISTS order_items (...) ENGINE = MergeTree() ORDER BY id;
-```
-
-Split into two migration files:
-
-```sql
--- 00002_create_orders.up.sql
-CREATE TABLE IF NOT EXISTS orders (...) ENGINE = MergeTree() ORDER BY id;
-```
-
-```sql
--- 00003_create_order_items.up.sql
-CREATE TABLE IF NOT EXISTS order_items (...) ENGINE = MergeTree() ORDER BY id;
-```
-
-### Run migrations from CI/CD, not on application boot
-
-ClickHouse has no advisory locks or distributed mutual exclusion. If you run migrations at application startup and deploy multiple instances at once, they will race — causing duplicate tracking rows, conflicting DDL, or partial failures.
-
-Instead, run migrations as a **dedicated, single-process step** in your CI/CD pipeline (e.g. a Kubernetes `Job` or a CI stage) before deploying the new application version. This guarantees only one process touches the migration state at a time, sidestepping the locking problem entirely.
-
-If you use the Go library, run it from a CI job — not as part of your application code.
-
-### ClickHouse Cloud
-
-When using **ClickHouse Cloud**, you do not need to configure `--cluster`, `--engine`, or `--insert-quorum` — replication and clustering are managed automatically. Just connect with your URI and run migrations:
+**ClickHouse Cloud:** replication is managed for you, so skip `--cluster`, `--engine`, and `--insert-quorum` entirely:
 
 ```bash
-clicko --uri "clickhouse://default:YOUR_PASSWORD@YOUR_SERVICE.clickhouse.cloud:9440/default?secure=true" --dir migrations up
+clicko --uri "clickhouse://default:PASSWORD@SERVICE.clickhouse.cloud:9440/default?secure=true" --dir migrations up
 ```
 
-## CLI usage
+## CLI reference
 
 ```
 clicko --uri <uri> [flags] <command>
 ```
 
-### Flags
-
-| Flag | Default | Description |
-|---|---|---|
-| `--uri` | *(required)* | ClickHouse connection URI (e.g. `clickhouse://user:pass@host:9000/db`) |
-| `--dir` | `migrations` | Directory containing migration files |
-| `--table` | `migration_versions` | Migration tracking table name |
-| `--cluster` |   | ClickHouse cluster name (enables `ON CLUSTER`) |
-| `--engine` |   | Custom table engine for the tracking table |
-| `--insert-quorum` |   | Write quorum for cluster inserts (number or `"auto"`) |
-| `--dry-run` |   | Print the SQL each command would execute without applying |
-| `--allow-out-of-order` |   | Allow pending migrations with a lower version than the highest applied version |
-| `--help` |   | Show help |
-
-### Commands
-
 | Command | Description |
 |---|---|
-| `up` | Apply all pending migrations |
-| `up-to <version>` | Apply migrations up to a specific version |
-| `down` | Rollback the last applied migration |
-| `down-to <version>` | Rollback migrations down to a specific version |
+| `up` / `up-to <version>` | Apply pending migrations (all, or up to a version) |
+| `down` / `down-to <version>` | Rollback the last migration (or down to a version) |
 | `reset` | Rollback all applied migrations |
 | `status` | Show migration status |
 
-### Example
-
-```bash
-clicko --uri "clickhouse://default:@localhost:9000/default" --dir migrations up
-```
-
-### Dry-run mode
-
-Use `--dry-run` to preview the SQL that would be executed without actually applying or reverting any migrations. This works with all commands (`up`, `up-to`, `down`, `down-to`, `reset`).
-
-```bash
-clicko --uri "clickhouse://default:@localhost:9000/default" --dir migrations up --dry-run
-```
-
-Output:
-
-```
-=== Version 1: create users (sql) ===
-CREATE TABLE IF NOT EXISTS users (...) ENGINE = MergeTree() ORDER BY id;
-
-=== Version 2: create orders (sql) ===
-CREATE TABLE IF NOT EXISTS orders (...) ENGINE = MergeTree() ORDER BY id;
-```
-
-For Go function migrations, `--dry-run` captures every `Exec` and `Query` call the function makes against a no-op connection, so dynamically-built SQL is shown in its final form.
+| Flag | Default | Description |
+|---|---|---|
+| `--uri` | *(required)* | Connection URI, e.g. `clickhouse://user:pass@host:9000/db` |
+| `--dir` | `migrations` | Migration files directory |
+| `--table` | `migration_versions` | Tracking table name |
+| `--cluster` | | Cluster name (enables `ON CLUSTER`) |
+| `--engine` | | Custom engine for the tracking table |
+| `--insert-quorum` | | Write quorum (number or `"auto"`) |
+| `--dry-run` | | Print SQL without executing |
+| `--allow-out-of-order` | | Allow pending migrations older than the highest applied version |
 
 ### Cluster mode
 
@@ -170,81 +73,62 @@ clicko \
   up
 ```
 
+### Dry-run
+
+`--dry-run` previews the SQL for any command without applying it. For Go migrations, every `Exec`/`Query` call is captured against a no-op connection, so even dynamically-built SQL is shown in its final form.
+
+```
+=== Version 1: create users (sql) ===
+CREATE TABLE IF NOT EXISTS users (...) ENGINE = MergeTree() ORDER BY id;
+```
+
 ## Go library
 
-Besides the CLI, clicko can be embedded as a Go library. This lets you run migrations as part of your CI pipeline, write integration tests against a local cluster, and programmatically target different environments — no risky manual access to the cluster required.
+Embed clicko to run migrations from CI pipelines or integration tests, with no manual cluster access needed.
 
 ```go
-package main
+conn, _ := clickhouse.Open(opts)
 
-import (
-    "context"
-    "log"
+migrator, err := clicko.New(conn, clicko.StoreConfig{
+    TableName:    "migration_versions",
+    Cluster:      "migration",
+    CustomEngine: "ReplicatedMergeTree('/clickhouse/migration/table/{database}/{table}', '{replica}')",
+    InsertQuorum: "4",
+})
+if err != nil {
+    log.Fatal(err)
+}
 
-    "github.com/ClickHouse/clickhouse-go/v2"
-    "github.com/arsura/clicko"
-
-    _ "your/app/migrations" // blank import to register Go migrations via init()
-)
-
-func main() {
-    ctx := context.Background()
-
-    opts, err := clickhouse.ParseDSN("clickhouse://default:@localhost:9000/default")
-    if err != nil {
-        log.Fatal(err)
-    }
-    conn, err := clickhouse.Open(opts)
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer conn.Close()
-
-    migrator, err := clicko.New(conn, clicko.StoreConfig{
-        TableName:    "migration_versions",
-        Cluster:      "migration",
-        CustomEngine: "ReplicatedMergeTree('/clickhouse/migration/table/{database}/{table}', '{replica}')",
-        InsertQuorum: "4",
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // Optional: preview SQL without applying.
-    // migrator.SetDryRun(true)
-
-    if err := migrator.Up(ctx); err != nil {
-        log.Fatal(err)
-    }
+if err := migrator.Up(ctx); err != nil {
+    log.Fatal(err)
 }
 ```
 
-See [Go integration example](example/go/README.md) for the full walkthrough including Go function migrations with `clicko.RegisterMigration`.
+See the [Go integration example](example/go/README.md) for the full walkthrough, including Go function migrations via `clicko.RegisterMigration`.
+
+## Best practices
+
+**Prefer forward-only migrations.** ClickHouse DDL like `DROP COLUMN` runs as slow, uninterruptible background mutations. A `down` file doesn't undo anything; it just queues another mutation and can leave the cluster inconsistent in between. Instead of rolling back, write a new `up` migration that reverts the intent. (`down` still works fine for local/dev setups.)
+
+**Write idempotent statements.** ClickHouse has no transactional DDL, so a failed multi-statement migration won't roll back. Use `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `DROP TABLE IF EXISTS` so re-runs are always safe.
+
+**One statement per migration file.** A file with multiple statements can fail halfway, making it hard to tell what succeeded. One statement per file keeps failures obvious and pairs well with idempotent writes.
+
+**Run migrations from CI/CD, not on app boot.** ClickHouse has no advisory locks, so multiple instances migrating at startup will race, causing duplicate tracking rows or conflicting DDL. Run migrations as a single dedicated step (e.g. a Kubernetes `Job` or CI stage) before deploying.
 
 ## Migrations on a sharded cluster
 
-When your ClickHouse cluster has multiple shards, the data cluster (e.g. `dev`) splits nodes into separate shards — each shard only replicates within its own group. This is great for data but problematic for migration tracking: if you run `ON CLUSTER dev`, the migration table gets sharded too, and each shard may end up with an independent copy of migration state.
+On a sharded data cluster, running `ON CLUSTER dev` shards the migration tracking table too, and each shard ends up with independent migration state.
 
-The solution is to define a **logical cluster** dedicated to migrations. This cluster puts **all replicas from every shard into a single shard**, so the migration tracking table replicates uniformly across the entire cluster.
-
-For example, the [dev/cluster](https://github.com/arsura/clicko/tree/main/dev/cluster) setup defines two clusters:
-
-- `dev` — the data cluster with 2 shards x 2 replicas:
+The fix: define a **logical cluster** just for migrations, with all replicas from every shard in a single shard, so the tracking table replicates uniformly everywhere.
 
 ```
-dev
-├── shard 1: ch-1-1, ch-1-2
+dev (data)                     migration (logical)
+├── shard 1: ch-1-1, ch-1-2    └── shard 1: ch-1-1, ch-1-2, ch-2-1, ch-2-2
 └── shard 2: ch-2-1, ch-2-2
 ```
 
-- `migration` — a logical cluster with a single shard containing all 4 nodes:
-
-```
-migration
-└── shard 1: ch-1-1, ch-1-2, ch-2-1, ch-2-2
-```
-
-When you run clicko with `--cluster migration`, the migration tracking table is created `ON CLUSTER migration` and every node sees the same replicated migration state. Pair this with a custom engine whose ZooKeeper path does **not** include `{shard}`, and `--insert-quorum` to guarantee writes reach all replicas before returning:
+Run clicko with `--cluster migration`, use an engine whose ZooKeeper path does **not** include `{shard}`, and set `--insert-quorum` so writes reach every replica:
 
 ```bash
 clicko \
@@ -254,33 +138,20 @@ clicko \
   ...
 ```
 
-Your actual data migrations can still use `ON CLUSTER dev` inside the SQL files themselves.
+Your data migrations can still use `ON CLUSTER dev` inside the SQL files themselves. See [dev/cluster](https://github.com/arsura/clicko/tree/main/dev/cluster) for a working setup.
 
 ## Examples
 
-- [CLI example](example/cli/README.md) — SQL file migrations via the CLI
-- [Go example](example/go/README.md) — Go function migrations embedded in an application
+- [CLI example](example/cli/README.md): SQL file migrations via the CLI
+- [Go example](example/go/README.md): Go function migrations embedded in an application
 
 ## Development
 
-The `dev/cluster` directory contains a Docker Compose setup for a local ClickHouse cluster (2 shards x 2 replicas + 1 ClickHouse Keeper node).
-
-Start the cluster:
+`dev/cluster` provides a Docker Compose setup: 2 shards × 2 replicas + 1 ClickHouse Keeper.
 
 ```bash
-make cluster-up
-```
-
-Run tests:
-
-```bash
-make test
-```
-
-Other commands:
-
-```bash
+make cluster-up         # start the local cluster
+make test               # run tests
 make cluster-down       # stop and remove volumes
-make cluster-restart    # restart the cluster
-make build              # build the CLI binary to bin/clicko
+make build              # build the CLI to bin/clicko
 ```

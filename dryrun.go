@@ -68,7 +68,10 @@ func (c *dryRunConn) ServerVersion() (*driver.ServerVersion, error) { return nil
 // on query results will see zero rows.
 type emptyRows struct{}
 
+var _ driver.Rows = (*emptyRows)(nil)
+
 func (r *emptyRows) Next() bool                       { return false }
+func (r *emptyRows) HasData() bool                    { return false }
 func (r *emptyRows) Scan(_ ...any) error              { return nil }
 func (r *emptyRows) ScanStruct(_ any) error           { return nil }
 func (r *emptyRows) ColumnTypes() []driver.ColumnType { return nil }
