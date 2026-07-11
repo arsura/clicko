@@ -315,15 +315,15 @@ func (m *Migrator) Reset(ctx context.Context) error {
 // highest already-applied version. When allowOutOfOrder is false it returns an
 // error listing every offending version; when true it logs a warning for each.
 func (m *Migrator) checkOutOfOrder(migrations []*Migration, applied map[uint64]*Migration) error {
+	if len(applied) == 0 {
+		return nil
+	}
+
 	var maxApplied uint64
 	for v := range applied {
 		if v > maxApplied {
 			maxApplied = v
 		}
-	}
-
-	if maxApplied == 0 {
-		return nil
 	}
 
 	var outOfOrder []uint64

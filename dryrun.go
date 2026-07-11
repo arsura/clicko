@@ -2,10 +2,12 @@ package clicko
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/column"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
 
@@ -48,7 +50,7 @@ func (c *dryRunConn) Select(_ context.Context, _ any, query string, args ...any)
 
 func (c *dryRunConn) PrepareBatch(_ context.Context, query string, _ ...driver.PrepareBatchOption) (driver.Batch, error) {
 	c.capture(query, nil)
-	return nil, fmt.Errorf("dry-run: PrepareBatch is not supported")
+	return &dryRunBatch{}, nil
 }
 
 func (c *dryRunConn) AsyncInsert(_ context.Context, query string, _ bool, args ...any) error {
@@ -80,9 +82,41 @@ func (r *emptyRows) Columns() []string                { return nil }
 func (r *emptyRows) Close() error                     { return nil }
 func (r *emptyRows) Err() error                       { return nil }
 
+// dryRunBatch implements driver.Batch as a no-op so that migration functions
+// using PrepareBatch can proceed in dry-run mode without panicking. Appended
+// rows are discarded; the INSERT statement itself is already captured by
+// PrepareBatch.
+type dryRunBatch struct{}
+
+var _ driver.Batch = (*dryRunBatch)(nil)
+
+func (b *dryRunBatch) Abort() error                    { return nil }
+func (b *dryRunBatch) Append(_ ...any) error           { return nil }
+func (b *dryRunBatch) AppendStruct(_ any) error        { return nil }
+func (b *dryRunBatch) Column(_ int) driver.BatchColumn { return &dryRunBatchColumn{} }
+func (b *dryRunBatch) Flush() error                    { return nil }
+func (b *dryRunBatch) Send() error                     { return nil }
+func (b *dryRunBatch) IsSent() bool                    { return false }
+func (b *dryRunBatch) Rows() int                       { return 0 }
+func (b *dryRunBatch) Columns() []column.Interface     { return nil }
+func (b *dryRunBatch) Close() error                    { return nil }
+
+// dryRunBatchColumn implements driver.BatchColumn as a no-op, discarding any
+// values appended via the column-oriented batch API.
+type dryRunBatchColumn struct{}
+
+var _ driver.BatchColumn = (*dryRunBatchColumn)(nil)
+
+func (c *dryRunBatchColumn) Append(_ any) error    { return nil }
+func (c *dryRunBatchColumn) AppendRow(_ any) error { return nil }
+
+// errDryRunNoData is returned by the dry-run row scanners: dry-run captures SQL
+// without executing it, so no result rows are ever available to scan.
+var errDryRunNoData = errors.New("dry-run: no data available")
+
 // emptyRow implements driver.Row returning no data.
 type emptyRow struct{}
 
 func (r *emptyRow) Err() error             { return nil }
-func (r *emptyRow) Scan(_ ...any) error    { return fmt.Errorf("dry-run: no data available") }
-func (r *emptyRow) ScanStruct(_ any) error { return fmt.Errorf("dry-run: no data available") }
+func (r *emptyRow) Scan(_ ...any) error    { return errDryRunNoData }
+func (r *emptyRow) ScanStruct(_ any) error { return errDryRunNoData }
