@@ -230,7 +230,13 @@ func (m *Migrator) applyUp(ctx context.Context, migration *Migration) error {
 }
 
 // UpTo applies pending migrations up to and including the target version.
+// Target 0 is rejected: version 0 is reserved (the loader and registry refuse
+// it), and up uses 0 internally as the "no bound" sentinel, so a 0 target
+// would silently behave like Up instead of what was most likely a typo.
 func (m *Migrator) UpTo(ctx context.Context, target uint64) error {
+	if target == 0 {
+		return fmt.Errorf("target version 0 is reserved (migration versions start at 1); to apply all pending migrations use \"up\" (CLI) or Up (Go)")
+	}
 	return m.up(ctx, target)
 }
 
@@ -320,7 +326,14 @@ func (m *Migrator) applyDown(ctx context.Context, migration *Migration) error {
 
 // DownTo reverts all applied migrations down to (but not including) the target
 // version. Rollback stops early if it reaches a forward-only migration.
+// Target 0 is rejected: version 0 is reserved (the loader and registry refuse
+// it), and down uses 0 internally as the "no bound" sentinel, so a 0 target
+// would silently behave like Reset — the most destructive command — instead
+// of what was most likely a typo.
 func (m *Migrator) DownTo(ctx context.Context, target uint64) error {
+	if target == 0 {
+		return fmt.Errorf("target version 0 is reserved (migration versions start at 1); to revert all applied migrations use \"reset\" (CLI) or Reset (Go)")
+	}
 	return m.down(ctx, target, 0)
 }
 

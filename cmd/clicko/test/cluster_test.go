@@ -205,29 +205,22 @@ func (s *CLIClusterSuite) TestDownToTargetVersion() {
 	assertAppliedMigrations(s.T(), actual, expectedMigrations[:1])
 }
 
-func (s *CLIClusterSuite) TestDownToZeroRevertsAll() {
+// TestDownToZeroRejected pins that the internal target=0 "no bound" sentinel
+// is not reachable from the CLI: version 0 can never be a real migration, so
+// a 0 target is treated as a typo instead of silently running a full reset.
+func (s *CLIClusterSuite) TestDownToZeroRejected() {
 	out, err := runCLI(s.binaryPath, args(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
-	require.Equal(s.T(), "Applying migration 1: create test table\n"+
-		"OK\n"+
-		"Applying migration 2: add email column\n"+
-		"OK\n"+
-		"Applying migration 3: add age column\n"+
-		"OK\n",
-		normalizeOutput(out))
 
 	out, err = runCLI(s.binaryPath, args(s.testDBURI, s.migrationsDir, "down-to", "0")...)
-	require.NoError(s.T(), err, "down-to: %s", out)
-	require.Equal(s.T(), "Reverting migration 3: add age column\n"+
-		"OK\n"+
-		"Reverting migration 2: add email column\n"+
-		"OK\n"+
-		"Reverting migration 1: create test table\n"+
-		"OK\n",
-		normalizeOutput(out))
+	require.Error(s.T(), err)
+	require.Equal(s.T(),
+		"target version 0 is reserved (migration versions start at 1); to revert all applied migrations use \"reset\" (CLI) or Reset (Go)\n",
+		out)
 
+	// Nothing may have been reverted.
 	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testClusterMigrationTable)
-	require.Empty(s.T(), actual)
+	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
 
 func (s *CLIClusterSuite) TestDownToVersionBeyondMax() {
@@ -244,7 +237,7 @@ func (s *CLIClusterSuite) TestDownToVersionBeyondMax() {
 }
 
 func (s *CLIClusterSuite) TestDownToOnEmptyState() {
-	out, err := runCLI(s.binaryPath, args(s.testDBURI, s.migrationsDir, "down-to", "0")...)
+	out, err := runCLI(s.binaryPath, args(s.testDBURI, s.migrationsDir, "down-to", "1")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Equal(s.T(), "No migrations to revert\n",
 		normalizeOutput(out))
