@@ -26,8 +26,8 @@ type Migration struct {
 }
 
 // MigrationSource holds the migration's executable content — either SQL
-// strings loaded from files, Go functions registered programmatically, or both.
-// When both are set, Go functions take precedence.
+// strings loaded from files or Go functions registered programmatically.
+// Type selects which pair is executed; content of the other kind is ignored.
 type MigrationSource struct {
 	Type     MigrationSourceType
 	UpSQL    string
