@@ -2,8 +2,6 @@ module github.com/arsura/clicko
 
 go 1.26
 
-toolchain go1.26.5
-
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.47.0
 	github.com/alecthomas/kong v1.15.0
