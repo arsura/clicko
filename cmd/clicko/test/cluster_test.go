@@ -292,6 +292,13 @@ func (s *CLIClusterSuite) TestResetOnEmptyState() {
 const statusHeader = "Version    Description               Status     Applied At\n" +
 	"----------------------------------------------------------------------\n"
 
+func (s *CLIClusterSuite) TestStatusDoesNotCreateTrackingTable() {
+	out, err := runCLI(s.binaryPath, args(s.testDBURI, s.migrationsDir, "status")...)
+	require.NoError(s.T(), err, "cli output: %s", out)
+
+	assertTableNotExists(s.T(), s.conn, s.testDBName, testClusterMigrationTable)
+}
+
 func (s *CLIClusterSuite) TestStatusAllPending() {
 	out, err := runCLI(s.binaryPath, args(s.testDBURI, s.migrationsDir, "status")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
