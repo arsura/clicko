@@ -14,13 +14,20 @@ type MockStore struct {
 	// TableMissing simulates the tracking table not existing yet;
 	// TableExists returns its negation.
 	TableMissing bool
+	// TableMissingOnSomeReplicas simulates cluster mode where the connected
+	// node has the table but another replica does not: TableExistsEverywhere
+	// returns false while TableExists stays true.
+	TableMissingOnSomeReplicas bool
 }
 
 func (s *MockStore) EnsureTable(_ context.Context) error { return nil }
 func (s *MockStore) TableExists(_ context.Context) (bool, error) {
 	return !s.TableMissing, nil
 }
-func (s *MockStore) CreateTableDDL() string {
+func (s *MockStore) TableExistsEverywhere(_ context.Context) (bool, error) {
+	return !s.TableMissing && !s.TableMissingOnSomeReplicas, nil
+}
+func (s *MockStore) GetCreateTableDDL() string {
 	return "CREATE TABLE IF NOT EXISTS mock_migration_versions (version UInt64) ENGINE = MergeTree() ORDER BY version"
 }
 func (s *MockStore) GetAppliedVersions(_ context.Context) (map[uint64]*clicko.Migration, error) {

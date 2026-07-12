@@ -154,16 +154,23 @@ func (s *CLIDryRunSuite) TestUpClusterTableOnOneNodeStillPreviewsDDL() {
 	dbName := createTestDB(s.T(), s.conn, migrationCluster)
 	uri := testURIWithDB(dbName)
 
-	// Create the tracking table on the connected node only (no ON CLUSTER).
 	err := s.conn.Exec(context.Background(),
 		"CREATE TABLE "+dbName+"."+testClusterMigrationTable+
 			" (version UInt64, description String, applied_at DateTime64(6) DEFAULT now64(6))"+
 			" ENGINE = MergeTree() ORDER BY version")
 	require.NoError(s.T(), err)
+	err = s.conn.Exec(context.Background(),
+		"INSERT INTO "+dbName+"."+testClusterMigrationTable+
+			" (version, description) VALUES (1, 'create test table')")
+	require.NoError(s.T(), err)
 
 	out, err := runCLI(s.binaryPath, args(uri, s.migrationsDir, "up", "--dry-run")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
+
 	require.Contains(s.T(), out, "=== Migration tracking table (would be created on apply) ===")
+	require.NotContains(s.T(), out, "=== Version 1: create test table (sql) ===")
+	require.Contains(s.T(), out, "=== Version 2: add email column (sql) ===")
+	require.Contains(s.T(), out, "=== Version 3: add age column (sql) ===")
 }
 
 // ---------------------------------------------------------------------------
