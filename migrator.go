@@ -201,6 +201,9 @@ func (m *Migrator) printMigrationSQL(ctx context.Context, migration *Migration, 
 func (m *Migrator) applyUp(ctx context.Context, migration *Migration) error {
 	switch migration.Source.Type {
 	case MigrationSourceTypeGo:
+		if migration.Source.UpFunc == nil {
+			return fmt.Errorf("migration %d has no up function", migration.Version)
+		}
 		if err := migration.Source.UpFunc(ctx, m.conn); err != nil {
 			return err
 		}
