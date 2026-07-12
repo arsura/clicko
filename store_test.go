@@ -327,7 +327,7 @@ func TestStore_CreateTableDDL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s, err := NewStore(nil, tt.config)
 			require.NoError(t, err)
-			assert.Equal(t, tt.expected, s.CreateTableDDL())
+			assert.Equal(t, tt.expected, s.GetCreateTableDDL())
 		})
 	}
 }

@@ -1,6 +1,7 @@
 package clicko_test
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
@@ -319,6 +320,26 @@ func (s *CLIClusterSuite) TestStatusAllApplied() {
 		"1          create test table         Applied    APPLIED_AT         \n"+
 		"2          add email column          Applied    APPLIED_AT         \n"+
 		"3          add age column            Applied    APPLIED_AT         \n",
+		normalizeOutput(out))
+}
+
+func (s *CLIClusterSuite) TestStatusReadsStateWhenTableMissingOnSomeReplicas() {
+	err := s.conn.Exec(context.Background(),
+		"CREATE TABLE "+s.testDBName+"."+testClusterMigrationTable+
+			" (version UInt64, description String, applied_at DateTime64(6) DEFAULT now64(6))"+
+			" ENGINE = MergeTree() ORDER BY version")
+	require.NoError(s.T(), err)
+	err = s.conn.Exec(context.Background(),
+		"INSERT INTO "+s.testDBName+"."+testClusterMigrationTable+
+			" (version, description) VALUES (1, 'create test table')")
+	require.NoError(s.T(), err)
+
+	out, err := runCLI(s.binaryPath, args(s.testDBURI, s.migrationsDir, "status")...)
+	require.NoError(s.T(), err, "status: %s", out)
+	require.Equal(s.T(), statusHeader+
+		"1          create test table         Applied    APPLIED_AT         \n"+
+		"2          add email column          Pending    \n"+
+		"3          add age column            Pending    \n",
 		normalizeOutput(out))
 }
 

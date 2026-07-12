@@ -25,21 +25,6 @@ var (
 	tableNameRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$`)
 )
 
-// Store provides read/write access to the migration state stored in ClickHouse.
-type Store interface {
-	TableExists(ctx context.Context) (bool, error)
-	EnsureTable(ctx context.Context) error
-	GetAppliedVersions(ctx context.Context) (map[uint64]*Migration, error)
-	Add(ctx context.Context, version uint64, description string) error
-	Remove(ctx context.Context, version uint64) error
-	CreateTableDDL() string
-}
-
-type store struct {
-	conn   clickhouse.Conn
-	config StoreConfig
-}
-
 // StoreConfig holds configuration for the migration state store.
 //
 // Several fields are interpolated directly into SQL statements (identifiers and
@@ -105,31 +90,6 @@ func (c StoreConfig) ResolveEngine() string {
 		return defaultClusterEngine
 	}
 	return defaultMergeTreeEngine
-}
-
-// NewStore creates a Store backed by the given ClickHouse connection.
-// Returns an error if any config value fails validation.
-func NewStore(conn clickhouse.Conn, config StoreConfig) (Store, error) {
-	if config.TableName == "" {
-		config.TableName = DefaultTableName
-	}
-
-	if err := config.validate(); err != nil {
-		return nil, err
-	}
-
-	// Without a quorum, a migration write acknowledged by one replica can be
-	// missing on another; a node that missed it would consider the migration
-	// unapplied and re-run it. That silently defeats the consistency the
-	// tracking table exists to provide, so call it out.
-	if config.IsCluster() && config.InsertQuorum == "" {
-		log.Printf("Warning: cluster mode without insert quorum; a node that misses a migration write may re-run the migration — set InsertQuorum (Go) or --insert-quorum (CLI) to the total number of nodes (shards × replicas) or \"auto\"")
-	}
-
-	return &store{
-		conn:   conn,
-		config: config,
-	}, nil
 }
 
 // validate checks every field that is interpolated into SQL. It assumes any
@@ -204,6 +164,47 @@ func (c StoreConfig) validateInsertQuorum() error {
 	return nil
 }
 
+// Store provides read/write access to the migration state stored in ClickHouse.
+type Store interface {
+	EnsureTable(ctx context.Context) error
+	GetCreateTableDDL() string
+	TableExistsEverywhere(ctx context.Context) (bool, error)
+	TableExists(ctx context.Context) (bool, error)
+	GetAppliedVersions(ctx context.Context) (map[uint64]*Migration, error)
+	Add(ctx context.Context, version uint64, description string) error
+	Remove(ctx context.Context, version uint64) error
+}
+
+type store struct {
+	conn   clickhouse.Conn
+	config StoreConfig
+}
+
+// NewStore creates a Store backed by the given ClickHouse connection.
+// Returns an error if any config value fails validation.
+func NewStore(conn clickhouse.Conn, config StoreConfig) (Store, error) {
+	if config.TableName == "" {
+		config.TableName = DefaultTableName
+	}
+
+	if err := config.validate(); err != nil {
+		return nil, err
+	}
+
+	// Without a quorum, a migration write acknowledged by one replica can be
+	// missing on another; a node that missed it would consider the migration
+	// unapplied and re-run it. That silently defeats the consistency the
+	// tracking table exists to provide, so call it out.
+	if config.IsCluster() && config.InsertQuorum == "" {
+		log.Printf("Warning: cluster mode without insert quorum; a node that misses a migration write may re-run the migration — set InsertQuorum (Go) or --insert-quorum (CLI) to the total number of nodes (shards × replicas) or \"auto\"")
+	}
+
+	return &store{
+		conn:   conn,
+		config: config,
+	}, nil
+}
+
 // EnsureTable creates the migration tracking table if it does not exist.
 // Engine selection: CustomEngine > ReplicatedMergeTree (when cluster is set) > MergeTree.
 //
@@ -213,19 +214,31 @@ func (c StoreConfig) validateInsertQuorum() error {
 // blocks until distributed_ddl_task_timeout and then fails, which would break
 // every command even when the table already exists everywhere.
 func (s *store) EnsureTable(ctx context.Context) error {
-	exists, err := s.TableExists(ctx)
+	exists, err := s.TableExistsEverywhere(ctx)
 	if err != nil {
 		return err
 	}
 	if exists {
 		return nil
 	}
-	return s.conn.Exec(ctx, s.CreateTableDDL())
+	return s.conn.Exec(ctx, s.GetCreateTableDDL())
 }
 
-// CreateTableDDL builds the CREATE TABLE statement for the tracking table.
+// TableExistsEverywhere reports whether the tracking table exists on every
+// replica of the cluster; in standalone mode it is the same as TableExists.
+// It is the gate for DDL: a connection through a load balancer only sees one
+// node, and anything less than full presence means an apply would still need
+// to run the ON CLUSTER CREATE DDL to converge the cluster.
+func (s *store) TableExistsEverywhere(ctx context.Context) (bool, error) {
+	if s.config.IsCluster() {
+		return s.tableExistsOnCluster(ctx)
+	}
+	return s.TableExists(ctx)
+}
+
+// GetCreateTableDDL builds the CREATE TABLE statement for the tracking table.
 // EnsureTable executes it; dry-run mode prints it as a preview.
-func (s *store) CreateTableDDL() string {
+func (s *store) GetCreateTableDDL() string {
 	createStmt := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s", s.config.quotedTableName())
 
 	if s.config.IsCluster() {
@@ -239,24 +252,6 @@ func (s *store) CreateTableDDL() string {
 		") ENGINE = %s ORDER BY version", s.config.ResolveEngine())
 
 	return createStmt
-}
-
-// TableExists reports whether the tracking table exists. It is read-only —
-// unlike EnsureTable, it never executes DDL. In cluster mode the table must
-// exist on every replica of the cluster: a connection through a load balancer
-// only sees one node, and anything less than full presence means an apply
-// would still need to run the ON CLUSTER CREATE DDL to converge the cluster.
-func (s *store) TableExists(ctx context.Context) (bool, error) {
-	if s.config.IsCluster() {
-		return s.tableExistsOnCluster(ctx)
-	}
-
-	var exists uint8
-	query := fmt.Sprintf("EXISTS TABLE %s", s.config.quotedTableName())
-	if err := s.conn.QueryRow(ctx, query).Scan(&exists); err != nil {
-		return false, err
-	}
-	return exists == 1, nil
 }
 
 // tableExistsOnCluster checks every replica via clusterAllReplicas and reports
@@ -285,6 +280,21 @@ func (s *store) tableExistsOnCluster(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	return existsEverywhere == 1, nil
+}
+
+// TableExists reports whether the tracking table exists on the connected
+// node. It is read-only — unlike EnsureTable, it never executes DDL. This is
+// the gate for reading applied state: rows recorded on the connected node are
+// authoritative even when another replica is still missing the table, so
+// answering cluster-wide here would misreport applied migrations as pending.
+// Use TableExistsEverywhere to decide whether the CREATE DDL must run.
+func (s *store) TableExists(ctx context.Context) (bool, error) {
+	var exists uint8
+	query := fmt.Sprintf("EXISTS TABLE %s", s.config.quotedTableName())
+	if err := s.conn.QueryRow(ctx, query).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists == 1, nil
 }
 
 // GetAppliedVersions returns all applied migrations keyed by version number.

@@ -133,20 +133,31 @@ func (m *Migrator) loadAppliedVersions(ctx context.Context) (map[uint64]*Migrati
 }
 
 // dryRunAppliedVersions is the read-only variant of loadAppliedVersions:
-// instead of creating the tracking table it checks for its existence. When the
-// table is missing, the CREATE TABLE DDL is printed as part of the preview and
-// every migration is treated as pending.
+// instead of creating the tracking table it checks for its existence. The two
+// checks answer different questions, mirroring what an apply would do: the
+// CREATE TABLE DDL is previewed whenever apply would execute it (table missing
+// on any replica), while applied state is read whenever the connected node has
+// the table — so a table that exists locally but not cluster-wide still gets
+// its applied migrations skipped in the preview instead of being shown as
+// pending. Only when the connected node has no table is everything pending.
 func (m *Migrator) dryRunAppliedVersions(ctx context.Context) (map[uint64]*Migration, error) {
-	exists, err := m.store.TableExists(ctx)
+	existsEverywhere, err := m.store.TableExistsEverywhere(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check migration table: %w", err)
 	}
 
-	if !exists {
+	if !existsEverywhere {
 		fmt.Println("=== Migration tracking table (would be created on apply) ===")
-		fmt.Println(m.store.CreateTableDDL())
+		fmt.Println(m.store.GetCreateTableDDL())
 		fmt.Println()
-		return make(map[uint64]*Migration), nil
+
+		exists, err := m.store.TableExists(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check migration table: %w", err)
+		}
+		if !exists {
+			return make(map[uint64]*Migration), nil
+		}
 	}
 
 	applied, err := m.store.GetAppliedVersions(ctx)
@@ -394,8 +405,11 @@ func (m *Migrator) Status(ctx context.Context) error {
 }
 
 // readAppliedVersions reads the applied migrations without executing any DDL:
-// when the tracking table does not exist yet it returns an empty map, meaning
-// every migration is treated as pending.
+// when the tracking table does not exist on the connected node it returns an
+// empty map, meaning every migration is treated as pending. The check is
+// deliberately local, not cluster-wide: rows on the connected node are
+// authoritative for what has been applied even if another replica is still
+// missing the table.
 func (m *Migrator) readAppliedVersions(ctx context.Context) (map[uint64]*Migration, error) {
 	exists, err := m.store.TableExists(ctx)
 	if err != nil {
