@@ -9,7 +9,7 @@ import (
 	"github.com/arsura/clicko"
 
 	// Blank import triggers init() in each migration file,
-	// which registers them via clicko.AddMigration.
+	// which registers them via clicko.RegisterMigration.
 	_ "github.com/arsura/clicko/example/go/migrations"
 )
 
