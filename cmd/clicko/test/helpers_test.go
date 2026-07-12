@@ -130,16 +130,9 @@ var (
 	cachedBinaryPath string
 	cachedBinaryErr  error
 	buildOnce        sync.Once
-	// buildDir is the per-run temp directory holding the built binary;
-	// TestMain removes it after the run.
-	buildDir string
+	buildDir         string
 )
 
-// buildClicko compiles the CLI binary once per test process and returns its
-// path. Subsequent calls within the same process reuse the cached binary.
-// The binary is always built fresh into a per-run temp directory: reusing a
-// binary left on disk by an interrupted earlier run would silently test stale
-// code, and go's incremental build cache makes the rebuild cheap anyway.
 func buildClicko(t *testing.T) string {
 	t.Helper()
 
