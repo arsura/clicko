@@ -91,6 +91,17 @@ func (s *RegisterSuite) TestPanicsOnInvalidVersion() {
 	)
 }
 
+func (s *RegisterSuite) TestPanicsOnVersionZero() {
+	up := func(ctx context.Context, conn clickhouse.Conn) error { return nil }
+
+	assert.PanicsWithValue(s.T(),
+		`failed to parse version from filename "00000_create_users.go": version 0 is reserved, versions must start at 1`,
+		func() {
+			clicko.RegisterNamedMigration("00000_create_users.go", up, nil)
+		},
+	)
+}
+
 func (s *RegisterSuite) TestPanicsOnNilUp() {
 	assert.PanicsWithValue(s.T(),
 		`failed to add migration "00001_create_users.go": up function must not be nil`,

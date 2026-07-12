@@ -48,6 +48,12 @@ func parseSQLFilename(name string) (sqlFileInfo, error) {
 		return sqlFileInfo{}, fmt.Errorf("invalid migration filename %q: version %q is not a valid number", name, versionParts[0])
 	}
 
+	// Version 0 is reserved: up/down use target=0 to mean "no bound", so a
+	// version-0 migration could never be targeted by up-to or kept by down-to.
+	if version == 0 {
+		return sqlFileInfo{}, fmt.Errorf("invalid migration filename %q: version 0 is reserved, versions must start at 1", name)
+	}
+
 	description := ""
 	if len(versionParts) > 1 {
 		description = strings.ReplaceAll(versionParts[1], "_", " ")

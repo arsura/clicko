@@ -76,6 +76,12 @@ func parseFilename(filename string) (uint64, string) {
 		panic(fmt.Sprintf("failed to parse version from filename %q: %v", filename, err))
 	}
 
+	// Version 0 is reserved: up/down use target=0 to mean "no bound", so a
+	// version-0 migration could never be targeted by up-to or kept by down-to.
+	if version == 0 {
+		panic(fmt.Sprintf("failed to parse version from filename %q: version 0 is reserved, versions must start at 1", filename))
+	}
+
 	description := ""
 	if len(parts) > 1 {
 		description = strings.ReplaceAll(parts[1], "_", " ")
