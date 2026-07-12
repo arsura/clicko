@@ -126,7 +126,8 @@ func (s *CLIStandaloneSuite) TestUpToAlreadyApplied() {
 func (s *CLIStandaloneSuite) TestUpToVersionBeyondMax() {
 	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up-to", "999")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
-	require.Equal(s.T(), "Applying migration 1: create test table\n"+
+	require.Equal(s.T(), "Warning: target version 999 does not match any known migration\n"+
+		"Applying migration 1: create test table\n"+
 		"OK\n"+
 		"Applying migration 2: add email column\n"+
 		"OK\n"+
@@ -228,7 +229,8 @@ func (s *CLIStandaloneSuite) TestDownToVersionBeyondMax() {
 
 	out, err = runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "down-to", "999")...)
 	require.NoError(s.T(), err, "down-to: %s", out)
-	require.Equal(s.T(), "No migrations to revert\n",
+	require.Equal(s.T(), "Warning: target version 999 does not match any known migration\n"+
+		"No migrations to revert\n",
 		normalizeOutput(out))
 
 	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testStandaloneMigrationTable)

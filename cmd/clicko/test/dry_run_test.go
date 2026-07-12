@@ -101,7 +101,10 @@ func (s *CLIDryRunSuite) TestUpToTargetVersion() {
 func (s *CLIDryRunSuite) TestUpToVersionBeyondMax() {
 	out, err := runCLI(s.binaryPath, dryRunArgs(s.testDBURI, s.migrationsDir, "up-to", "999", "--dry-run")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
-	require.Equal(s.T(), dryRunTrackingTablePreview+dryRunUpMigration1+dryRunUpMigration2+dryRunUpMigration3, out)
+	require.Equal(s.T(), dryRunTrackingTablePreview+
+		"Warning: target version 999 does not match any known migration\n"+
+		dryRunUpMigration1+dryRunUpMigration2+dryRunUpMigration3,
+		normalizeOutput(out))
 }
 
 func (s *CLIDryRunSuite) TestUpNoPending() {
@@ -216,7 +219,8 @@ func (s *CLIDryRunSuite) TestDownToVersionBeyondMax() {
 
 	out, err := runCLI(s.binaryPath, dryRunArgs(s.testDBURI, s.migrationsDir, "down-to", "999", "--dry-run")...)
 	require.NoError(s.T(), err, "cli output: %s", out)
-	require.Equal(s.T(), "No migrations to revert\n", normalizeOutput(out))
+	require.Equal(s.T(), "Warning: target version 999 does not match any known migration\n"+
+		"No migrations to revert\n", normalizeOutput(out))
 }
 
 func (s *CLIDryRunSuite) TestDownNothingToRevert() {
