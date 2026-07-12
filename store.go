@@ -206,7 +206,20 @@ func (c StoreConfig) validateInsertQuorum() error {
 
 // EnsureTable creates the migration tracking table if it does not exist.
 // Engine selection: CustomEngine > ReplicatedMergeTree (when cluster is set) > MergeTree.
+//
+// The existence check runs first so that a run with nothing to create stays
+// read-only. In cluster mode the CREATE is an ON CLUSTER DDL that queues a
+// ZooKeeper task and waits for every host — with one replica unreachable it
+// blocks until distributed_ddl_task_timeout and then fails, which would break
+// every command even when the table already exists everywhere.
 func (s *store) EnsureTable(ctx context.Context) error {
+	exists, err := s.TableExists(ctx)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
 	return s.conn.Exec(ctx, s.CreateTableDDL())
 }
 
