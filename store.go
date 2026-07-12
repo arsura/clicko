@@ -63,7 +63,8 @@ type StoreConfig struct {
 	// This is necessary because the migration table is replicated across all nodes via a single
 	// ZooKeeper path — a node that missed the write would report the migration as not applied.
 	// Accepts a positive integer (e.g. "6" for 3 shards × 2 replicas) or "auto".
-	// Has no effect when Cluster is not set.
+	// Requires Cluster to be set: NewStore rejects a quorum without a cluster,
+	// since it would otherwise be silently ignored.
 	// https://clickhouse.com/docs/operations/settings/settings#insert_quorum
 	InsertQuorum string
 }
@@ -94,6 +95,14 @@ func NewStore(conn clickhouse.Conn, config StoreConfig) (Store, error) {
 
 	if err := config.validate(); err != nil {
 		return nil, err
+	}
+
+	// Without a quorum, a migration write acknowledged by one replica can be
+	// missing on another; a node that missed it would consider the migration
+	// unapplied and re-run it. That silently defeats the consistency the
+	// tracking table exists to provide, so call it out.
+	if config.IsCluster() && config.InsertQuorum == "" {
+		log.Printf("Warning: cluster mode without insert quorum; a node that misses a migration write may re-run the migration — set InsertQuorum (Go) or --insert-quorum (CLI) to the total number of nodes (shards × replicas) or \"auto\"")
 	}
 
 	return &store{
@@ -151,16 +160,24 @@ func (c StoreConfig) validateCustomEngine() error {
 	return nil
 }
 
-// validateInsertQuorum ensures the quorum is a positive integer or "auto".
+// validateInsertQuorum ensures the quorum is a positive integer or "auto",
+// and that it is only set alongside a cluster — Add only applies it in
+// cluster mode, so accepting it without one would silently do nothing.
 func (c StoreConfig) validateInsertQuorum() error {
-	if c.InsertQuorum == "" || c.InsertQuorum == "auto" {
+	if c.InsertQuorum == "" {
 		return nil
 	}
 
 	// insert_quorum=0 disables quorum entirely, which silently defeats the
 	// consistency guarantee this flag exists to provide, so require >= 1.
-	if q, err := strconv.ParseUint(c.InsertQuorum, 10, 64); err != nil || q < 1 {
-		return fmt.Errorf("invalid insert quorum %q: must be a positive integer (>= 1) or \"auto\"", c.InsertQuorum)
+	if c.InsertQuorum != "auto" {
+		if q, err := strconv.ParseUint(c.InsertQuorum, 10, 64); err != nil || q < 1 {
+			return fmt.Errorf("invalid insert quorum %q: must be a positive integer (>= 1) or \"auto\"", c.InsertQuorum)
+		}
+	}
+
+	if !c.IsCluster() {
+		return fmt.Errorf("insert quorum %q has no effect without a cluster: set Cluster (Go) or --cluster (CLI), or unset the quorum", c.InsertQuorum)
 	}
 
 	return nil

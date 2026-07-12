@@ -92,12 +92,12 @@ func TestNewStore_ValidatesConfigValid(t *testing.T) {
 		},
 		// --- InsertQuorum ---
 		{
-			name:   "numeric insert quorum is valid",
-			config: StoreConfig{InsertQuorum: "6"},
+			name:   "numeric insert quorum with cluster is valid",
+			config: StoreConfig{Cluster: "my_cluster", InsertQuorum: "6"},
 		},
 		{
-			name:   "auto insert quorum is valid",
-			config: StoreConfig{InsertQuorum: "auto"},
+			name:   "auto insert quorum with cluster is valid",
+			config: StoreConfig{Cluster: "my_cluster", InsertQuorum: "auto"},
 		},
 		// --- Combined ---
 		{
@@ -261,6 +261,16 @@ func TestNewStore_ValidatesConfigInvalid(t *testing.T) {
 			name:        "insert quorum with surrounding spaces is rejected",
 			config:      StoreConfig{InsertQuorum: " 6 "},
 			errContains: "invalid insert quorum",
+		},
+		{
+			name:        "insert quorum without cluster is rejected",
+			config:      StoreConfig{InsertQuorum: "6"},
+			errContains: "has no effect without a cluster",
+		},
+		{
+			name:        "auto insert quorum without cluster is rejected",
+			config:      StoreConfig{InsertQuorum: "auto"},
+			errContains: "has no effect without a cluster",
 		},
 	}
 
