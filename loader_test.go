@@ -186,6 +186,20 @@ func (s *SQLLoaderSuite) TestErrorVersionZero() {
 	assert.ErrorContains(s.T(), err, "version 0 is reserved")
 }
 
+func (s *SQLLoaderSuite) TestErrorEmptyUpFile() {
+	loader := clicko.NewSQLLoader(testdataDir + "/err_empty_up_file")
+
+	_, err := loader.Load()
+	assert.ErrorContains(s.T(), err, `migration file "00001_create_users.up.sql" is empty`)
+}
+
+func (s *SQLLoaderSuite) TestErrorEmptyDownFile() {
+	loader := clicko.NewSQLLoader(testdataDir + "/err_empty_down_file")
+
+	_, err := loader.Load()
+	assert.ErrorContains(s.T(), err, `migration file "00001_create_users.down.sql" is empty`)
+}
+
 func (s *SQLLoaderSuite) TestErrorDownOnly() {
 	loader := clicko.NewSQLLoader(testdataDir + "/err_down_only")
 
