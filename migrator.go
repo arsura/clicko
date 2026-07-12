@@ -237,7 +237,7 @@ func (m *Migrator) down(ctx context.Context, target uint64, limit int) error {
 		return err
 	}
 
-	// Loader returns ascending order; reverse to revert newest first.
+	migrations = slices.Clone(migrations)
 	slices.Reverse(migrations)
 
 	revertedCount := 0
