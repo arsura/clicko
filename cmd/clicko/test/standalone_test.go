@@ -197,9 +197,6 @@ func (s *CLIStandaloneSuite) TestDownToTargetVersion() {
 	assertAppliedMigrations(s.T(), actual, expectedMigrations[:1])
 }
 
-// TestDownToZeroRejected pins that the internal target=0 "no bound" sentinel
-// is not reachable from the CLI: version 0 can never be a real migration, so
-// a 0 target is treated as a typo instead of silently running a full reset.
 func (s *CLIStandaloneSuite) TestDownToZeroRejected() {
 	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
@@ -210,13 +207,10 @@ func (s *CLIStandaloneSuite) TestDownToZeroRejected() {
 		"target version 0 is reserved (migration versions start at 1); to revert all applied migrations use \"reset\" (CLI) or Reset (Go)\n",
 		out)
 
-	// Nothing may have been reverted.
 	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testStandaloneMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
 
-// TestUpToZeroRejected is the up-direction counterpart: a 0 target must error
-// instead of silently behaving like a full "up".
 func (s *CLIStandaloneSuite) TestUpToZeroRejected() {
 	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up-to", "0")...)
 	require.Error(s.T(), err)
@@ -224,8 +218,6 @@ func (s *CLIStandaloneSuite) TestUpToZeroRejected() {
 		"target version 0 is reserved (migration versions start at 1); to apply all pending migrations use \"up\" (CLI) or Up (Go)\n",
 		out)
 
-	// Nothing may have been applied — the target is rejected before any
-	// migration runs or the tracking table is created.
 	assertTableNotExists(s.T(), s.conn, s.testDBName, "standalone_table")
 	assertTableNotExists(s.T(), s.conn, s.testDBName, testStandaloneMigrationTable)
 }

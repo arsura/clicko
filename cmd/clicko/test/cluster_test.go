@@ -205,9 +205,6 @@ func (s *CLIClusterSuite) TestDownToTargetVersion() {
 	assertAppliedMigrations(s.T(), actual, expectedMigrations[:1])
 }
 
-// TestDownToZeroRejected pins that the internal target=0 "no bound" sentinel
-// is not reachable from the CLI: version 0 can never be a real migration, so
-// a 0 target is treated as a typo instead of silently running a full reset.
 func (s *CLIClusterSuite) TestDownToZeroRejected() {
 	out, err := runCLI(s.binaryPath, args(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
@@ -218,7 +215,6 @@ func (s *CLIClusterSuite) TestDownToZeroRejected() {
 		"target version 0 is reserved (migration versions start at 1); to revert all applied migrations use \"reset\" (CLI) or Reset (Go)\n",
 		out)
 
-	// Nothing may have been reverted.
 	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testClusterMigrationTable)
 	assertAppliedMigrations(s.T(), actual, expectedMigrations)
 }
