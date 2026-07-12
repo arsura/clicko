@@ -293,7 +293,7 @@ func TestStore_CreateTableDDL(t *testing.T) {
 		{
 			name:   "standalone with defaults",
 			config: StoreConfig{},
-			expected: "CREATE TABLE IF NOT EXISTS migration_versions (\n" +
+			expected: "CREATE TABLE IF NOT EXISTS `migration_versions` (\n" +
 				"    version UInt64,\n" +
 				"    description String,\n" +
 				"    applied_at DateTime64(6) DEFAULT now64(6)\n" +
@@ -306,11 +306,20 @@ func TestStore_CreateTableDDL(t *testing.T) {
 				Cluster:      "prod",
 				CustomEngine: "ReplicatedMergeTree('/clickhouse/tables/{database}/{table}', '{replica}')",
 			},
-			expected: "CREATE TABLE IF NOT EXISTS mydb.migrations ON CLUSTER `prod` (\n" +
+			expected: "CREATE TABLE IF NOT EXISTS `mydb`.`migrations` ON CLUSTER `prod` (\n" +
 				"    version UInt64,\n" +
 				"    description String,\n" +
 				"    applied_at DateTime64(6) DEFAULT now64(6)\n" +
 				") ENGINE = ReplicatedMergeTree('/clickhouse/tables/{database}/{table}', '{replica}') ORDER BY version",
+		},
+		{
+			name:   "reserved word table name is quoted",
+			config: StoreConfig{TableName: "order"},
+			expected: "CREATE TABLE IF NOT EXISTS `order` (\n" +
+				"    version UInt64,\n" +
+				"    description String,\n" +
+				"    applied_at DateTime64(6) DEFAULT now64(6)\n" +
+				") ENGINE = MergeTree() ORDER BY version",
 		},
 	}
 
