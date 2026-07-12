@@ -292,6 +292,13 @@ func (s *CLIStandaloneSuite) TestStatusAllPending() {
 		normalizeOutput(out))
 }
 
+func (s *CLIStandaloneSuite) TestStatusDoesNotCreateTrackingTable() {
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "status")...)
+	require.NoError(s.T(), err, "cli output: %s", out)
+
+	assertTableNotExists(s.T(), s.conn, s.testDBName, testStandaloneMigrationTable)
+}
+
 func (s *CLIStandaloneSuite) TestStatusAllApplied() {
 	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)

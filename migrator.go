@@ -354,11 +354,19 @@ func (m *Migrator) checkOutOfOrder(migrations []*Migration, applied map[uint64]*
 }
 
 // Status prints a table showing each migration's version, description,
-// status, and when it was applied.
+// status, and when it was applied. It is read-only: unlike Up and Down it
+// never creates the tracking table, so it works with credentials that lack
+// DDL permissions and never modifies the server. When the tracking table
+// does not exist yet, every migration is reported as pending.
 func (m *Migrator) Status(ctx context.Context) error {
-	migrations, applied, err := m.loadState(ctx)
+	applied, err := m.readAppliedVersions(ctx)
 	if err != nil {
 		return err
+	}
+
+	migrations, err := m.loader.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load migrations: %w", err)
 	}
 
 	fmt.Printf("%-10s %-25s %-10s %s\n", "Version", "Description", "Status", "Applied At")
@@ -375,4 +383,25 @@ func (m *Migrator) Status(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// readAppliedVersions reads the applied migrations without executing any DDL:
+// when the tracking table does not exist yet it returns an empty map, meaning
+// every migration is treated as pending.
+func (m *Migrator) readAppliedVersions(ctx context.Context) (map[uint64]*Migration, error) {
+	exists, err := m.store.TableExists(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check migration table: %w", err)
+	}
+
+	if !exists {
+		return make(map[uint64]*Migration), nil
+	}
+
+	applied, err := m.store.GetAppliedVersions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get applied versions: %w", err)
+	}
+
+	return applied, nil
 }
