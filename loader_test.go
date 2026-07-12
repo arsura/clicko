@@ -179,6 +179,13 @@ func (s *SQLLoaderSuite) TestErrorVersionNotNumeric() {
 	assert.ErrorContains(s.T(), err, "is not a valid number")
 }
 
+func (s *SQLLoaderSuite) TestErrorVersionZero() {
+	loader := clicko.NewSQLLoader(testdataDir + "/err_version_zero")
+
+	_, err := loader.Load()
+	assert.ErrorContains(s.T(), err, "version 0 is reserved")
+}
+
 func (s *SQLLoaderSuite) TestErrorDownOnly() {
 	loader := clicko.NewSQLLoader(testdataDir + "/err_down_only")
 
