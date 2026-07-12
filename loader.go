@@ -24,75 +24,6 @@ func NewSQLLoader(dir string) Loader {
 	return &sqlLoader{dir: dir}
 }
 
-type sqlFileInfo struct {
-	version     uint64
-	description string
-	direction   string
-}
-
-// parseSQLFilename parses a SQL migration filename into its components.
-// Expected format: <version>_<description>.<up|down>.sql
-func parseSQLFilename(name string) (sqlFileInfo, error) {
-	parts := strings.Split(name, ".")
-	if len(parts) != 3 {
-		return sqlFileInfo{}, fmt.Errorf("invalid migration filename %q: expected <version>_<description>.<up|down>.sql", name)
-	}
-
-	direction := parts[1]
-	if direction != MigrationDirectionUp && direction != MigrationDirectionDown {
-		return sqlFileInfo{}, fmt.Errorf("invalid migration filename %q: direction must be \"up\" or \"down\", got %q", name, direction)
-	}
-
-	versionParts := strings.SplitN(parts[0], "_", 2)
-	version, err := strconv.ParseUint(versionParts[0], 10, 64)
-	if err != nil {
-		return sqlFileInfo{}, fmt.Errorf("invalid migration filename %q: version %q is not a valid number", name, versionParts[0])
-	}
-
-	// Version 0 is reserved: up/down use target=0 to mean "no bound", so a
-	// version-0 migration could never be targeted by up-to or kept by down-to.
-	if version == 0 {
-		return sqlFileInfo{}, fmt.Errorf("invalid migration filename %q: version 0 is reserved, versions must start at 1", name)
-	}
-
-	description := ""
-	if len(versionParts) > 1 {
-		description = strings.ReplaceAll(versionParts[1], "_", " ")
-	}
-
-	return sqlFileInfo{version: version, description: description, direction: direction}, nil
-}
-
-// blockCommentRegex and lineCommentRegex match SQL comments so
-// isEffectivelyEmptySQL can tell a file with no executable statement (only
-// comments/whitespace) from one that actually has SQL to run.
-var (
-	blockCommentRegex = regexp.MustCompile(`(?s)/\*.*?\*/`)
-	lineCommentRegex  = regexp.MustCompile(`--[^\n]*`)
-)
-
-// isEffectivelyEmptySQL reports whether content has no executable statement
-// once SQL comments are stripped. A .down.sql containing only "-- noop" (a
-// natural way to write a no-op rollback) would otherwise pass the plain
-// TrimSpace check, reach the server as-is, and fail with ClickHouse's "Empty
-// query" error mid-rollback — after migrations above it were already
-// reverted. Catching it at load time turns that into a clear, upfront error.
-func isEffectivelyEmptySQL(content string) bool {
-	s := blockCommentRegex.ReplaceAllString(content, "")
-	s = lineCommentRegex.ReplaceAllString(s, "")
-	return strings.TrimSpace(s) == ""
-}
-
-// validateUpFilesExist returns an error if any migration version has no .up.sql file.
-func validateUpFilesExist(migrationsMap map[uint64]*Migration) error {
-	for version, m := range migrationsMap {
-		if m.Source.UpSQL == "" {
-			return fmt.Errorf("migration version %d (%s) has no .up.sql file", version, m.Description)
-		}
-	}
-	return nil
-}
-
 // Load reads .sql files from the configured directory and returns migrations
 // sorted by version in ascending order.
 //
@@ -128,14 +59,13 @@ func (l *sqlLoader) Load() ([]*Migration, error) {
 	for _, file := range files {
 		name := file.Name()
 
-		// Match the extension case-insensitively so a ".SQL" file is loaded
-		// instead of being silently dropped from the migration set.
+		// Case-insensitive so a ".SQL" file isn't silently dropped.
 		if !strings.EqualFold(filepath.Ext(name), ".sql") {
 			continue
 		}
 
-		// file.IsDir() reports false for a symlink pointing at a directory;
-		// Stat follows the link so those are skipped like plain directories.
+		// Stat follows symlinks, so a symlinked directory is skipped too
+		// (file.IsDir() alone would report false for it).
 		stat, err := os.Stat(filepath.Join(l.dir, name))
 		if err != nil {
 			return nil, fmt.Errorf("failed to stat %q: %w", name, err)
@@ -203,6 +133,72 @@ func (l *sqlLoader) Load() ([]*Migration, error) {
 	})
 
 	return migrations, nil
+}
+
+type sqlFileInfo struct {
+	version     uint64
+	description string
+	direction   string
+}
+
+// parseSQLFilename parses a SQL migration filename into its components.
+// Expected format: <version>_<description>.<up|down>.sql
+func parseSQLFilename(name string) (sqlFileInfo, error) {
+	parts := strings.Split(name, ".")
+	if len(parts) != 3 {
+		return sqlFileInfo{}, fmt.Errorf("invalid migration filename %q: expected <version>_<description>.<up|down>.sql", name)
+	}
+
+	direction := parts[1]
+	if direction != MigrationDirectionUp && direction != MigrationDirectionDown {
+		return sqlFileInfo{}, fmt.Errorf("invalid migration filename %q: direction must be \"up\" or \"down\", got %q", name, direction)
+	}
+
+	versionParts := strings.SplitN(parts[0], "_", 2)
+	version, err := strconv.ParseUint(versionParts[0], 10, 64)
+	if err != nil {
+		return sqlFileInfo{}, fmt.Errorf("invalid migration filename %q: version %q is not a valid number", name, versionParts[0])
+	}
+
+	// Version 0 is reserved: up/down use target=0 to mean "no bound", so a
+	// version-0 migration could never be targeted by up-to or kept by down-to.
+	if version == 0 {
+		return sqlFileInfo{}, fmt.Errorf("invalid migration filename %q: version 0 is reserved, versions must start at 1", name)
+	}
+
+	description := ""
+	if len(versionParts) > 1 {
+		description = strings.ReplaceAll(versionParts[1], "_", " ")
+	}
+
+	return sqlFileInfo{version: version, description: description, direction: direction}, nil
+}
+
+// blockCommentRegex and lineCommentRegex strip SQL comments so
+// isEffectivelyEmptySQL can catch a file with no executable statement.
+var (
+	blockCommentRegex = regexp.MustCompile(`(?s)/\*.*?\*/`)
+	lineCommentRegex  = regexp.MustCompile(`--[^\n]*`)
+)
+
+// isEffectivelyEmptySQL reports whether content has no executable statement
+// once comments are stripped. Without this, a .down.sql containing only
+// "-- noop" would pass a plain TrimSpace check and fail server-side with
+// ClickHouse's "Empty query" error mid-rollback instead of at load time.
+func isEffectivelyEmptySQL(content string) bool {
+	s := blockCommentRegex.ReplaceAllString(content, "")
+	s = lineCommentRegex.ReplaceAllString(s, "")
+	return strings.TrimSpace(s) == ""
+}
+
+// validateUpFilesExist returns an error if any migration version has no .up.sql file.
+func validateUpFilesExist(migrationsMap map[uint64]*Migration) error {
+	for version, m := range migrationsMap {
+		if m.Source.UpSQL == "" {
+			return fmt.Errorf("migration version %d (%s) has no .up.sql file", version, m.Description)
+		}
+	}
+	return nil
 }
 
 type goLoader struct{}

@@ -15,21 +15,18 @@ var (
 	globalGoMigrations = make(map[uint64]*Migration)
 )
 
-// RegisterMigration registers a Go migration using the caller's filename to
-// derive the version number. The filename must start with a numeric prefix
-// (e.g. 20250317141923_create_users.go).
-//
-// Panics if the version conflicts with an already-registered migration.
+// RegisterMigration registers a Go migration, deriving the version from the
+// caller's filename (e.g. 20250317141923_create_users.go). Panics if the
+// version conflicts with an already-registered migration.
 func RegisterMigration(up, down GoMigrationFunc) {
 	_, filename, _, _ := runtime.Caller(1)
 	RegisterNamedMigration(filename, up, down)
 }
 
-// RegisterNamedMigration registers a Go migration with an explicit filename.
-// The version is parsed from the leading numeric component of the base
-// filename (e.g. "20250317141923_create_users.go" → version 20250317141923).
-//
-// Panics if the version conflicts with an already-registered migration.
+// RegisterNamedMigration registers a Go migration with an explicit filename,
+// parsing the version from its leading numeric component (e.g.
+// "20250317141923_create_users.go" → 20250317141923). Panics if the version
+// conflicts with an already-registered migration.
 func RegisterNamedMigration(filename string, up, down GoMigrationFunc) {
 	if up == nil {
 		panic(fmt.Sprintf("failed to add migration %q: up function must not be nil", filename))
@@ -58,12 +55,8 @@ func RegisterNamedMigration(filename string, up, down GoMigrationFunc) {
 }
 
 // parseFilename extracts the numeric version and human-readable description
-// from a migration filename. It handles full paths by taking the base name.
-//
-// Examples:
-//
-//	"/path/to/20250317141923_create_users.go" → (20250317141923, "create users")
-//	"00001_add_column.go"                     → (1, "add column")
+// from a migration filename (full paths are reduced to the base name), e.g.
+// "20250317141923_create_users.go" → (20250317141923, "create users").
 func parseFilename(filename string) (uint64, string) {
 	base := filepath.Base(filename)
 	ext := filepath.Ext(base)

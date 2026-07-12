@@ -86,10 +86,9 @@ func run(globals *CLI, fn func(context.Context, *clicko.Migrator) error) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Once the first signal has cancelled ctx, unregister the handler so a
-	// second signal falls back to Go's default behavior and terminates the
-	// process immediately — some driver operations (e.g. the initial dial)
-	// do not watch ctx and would otherwise make Ctrl+C appear ignored.
+	// Unregister after the first signal so a second one falls back to Go's
+	// default behavior and kills the process immediately — some driver calls
+	// (e.g. the initial dial) don't watch ctx and would ignore a repeat Ctrl+C.
 	go func() {
 		<-ctx.Done()
 		stop()
