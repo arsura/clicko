@@ -140,6 +140,10 @@ func (l *sqlLoader) Load() ([]*Migration, error) {
 			return nil, fmt.Errorf("failed to read migration file %q: %w", name, err)
 		}
 
+		if strings.TrimSpace(string(content)) == "" {
+			return nil, fmt.Errorf("migration file %q is empty", name)
+		}
+
 		switch info.direction {
 		case MigrationDirectionUp:
 			m.Source.UpSQL = string(content)
