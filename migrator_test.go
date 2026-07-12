@@ -11,19 +11,15 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-// ---------------------------------------------------------------------------
-// checkOutOfOrder — tested indirectly through Migrator.Up
-// ---------------------------------------------------------------------------
-
-type CheckOutOfOrderSuite struct {
+type MigratorSuite struct {
 	suite.Suite
 }
 
-func TestCheckOutOfOrderSuite(t *testing.T) {
-	suite.Run(t, new(CheckOutOfOrderSuite))
+func TestMigratorTestSuite(t *testing.T) {
+	suite.Run(t, new(MigratorSuite))
 }
 
-func (s *CheckOutOfOrderSuite) TestNoAppliedReturnsNil() {
+func (s *MigratorSuite) TestNoAppliedReturnsNil() {
 	loader := &mock.MockLoader{Migrations: []*clicko.Migration{
 		mock.NoopMigration(1, "init"),
 		mock.NoopMigration(2, "second"),
@@ -35,7 +31,7 @@ func (s *CheckOutOfOrderSuite) TestNoAppliedReturnsNil() {
 	require.NoError(s.T(), err, "no applied migrations: maxApplied=0, should never be out-of-order")
 }
 
-func (s *CheckOutOfOrderSuite) TestInOrderReturnsNil() {
+func (s *MigratorSuite) TestInOrderReturnsNil() {
 	loader := &mock.MockLoader{Migrations: []*clicko.Migration{
 		mock.NoopMigration(1, "first"),
 		mock.NoopMigration(2, "second"),
@@ -48,7 +44,7 @@ func (s *CheckOutOfOrderSuite) TestInOrderReturnsNil() {
 	require.NoError(s.T(), err, "pending v3 > maxApplied v2: in-order, should succeed")
 }
 
-func (s *CheckOutOfOrderSuite) TestSingleVersionReturnsError() {
+func (s *MigratorSuite) TestSingleVersionReturnsError() {
 	loader := &mock.MockLoader{Migrations: []*clicko.Migration{
 		mock.NoopMigration(1, "first"),
 		mock.NoopMigration(2, "gap"),
@@ -62,7 +58,7 @@ func (s *CheckOutOfOrderSuite) TestSingleVersionReturnsError() {
 	assert.Contains(s.T(), err.Error(), "version(s) [2] are pending but version 3 is already applied; verify that the migration is independent of any previously applied changes before proceeding")
 }
 
-func (s *CheckOutOfOrderSuite) TestMultipleVersionsReturnsError() {
+func (s *MigratorSuite) TestMultipleVersionsReturnsError() {
 	loader := &mock.MockLoader{Migrations: []*clicko.Migration{
 		mock.NoopMigration(1, "first"),
 		mock.NoopMigration(2, "gap-a"),
@@ -78,7 +74,7 @@ func (s *CheckOutOfOrderSuite) TestMultipleVersionsReturnsError() {
 	assert.Contains(s.T(), err.Error(), "version(s) [2 3 4] are pending but version 5 is already applied; verify that the migration is independent of any previously applied changes before proceeding")
 }
 
-func (s *CheckOutOfOrderSuite) TestSingleVersionAllowFlagReturnsNil() {
+func (s *MigratorSuite) TestSingleVersionAllowFlagReturnsNil() {
 	loader := &mock.MockLoader{Migrations: []*clicko.Migration{
 		mock.NoopMigration(1, "first"),
 		mock.NoopMigration(2, "gap"),
@@ -92,7 +88,7 @@ func (s *CheckOutOfOrderSuite) TestSingleVersionAllowFlagReturnsNil() {
 	require.NoError(s.T(), err)
 }
 
-func (s *CheckOutOfOrderSuite) TestMultipleVersionsAllowFlagReturnsNil() {
+func (s *MigratorSuite) TestMultipleVersionsAllowFlagReturnsNil() {
 	loader := &mock.MockLoader{Migrations: []*clicko.Migration{
 		mock.NoopMigration(1, "first"),
 		mock.NoopMigration(2, "gap-a"),
@@ -106,4 +102,20 @@ func (s *CheckOutOfOrderSuite) TestMultipleVersionsAllowFlagReturnsNil() {
 	m.SetAllowOutOfOrder(true)
 	err := m.Up(context.Background())
 	require.NoError(s.T(), err)
+}
+
+func (s *MigratorSuite) TestUpErrorsOnNilUpFunc() {
+	loader := &mock.MockLoader{Migrations: []*clicko.Migration{
+		{
+			Version:     1,
+			Description: "broken",
+			Source:      clicko.MigrationSource{Type: clicko.MigrationSourceTypeGo},
+		},
+	}}
+	store := &mock.MockStore{}
+
+	m := clicko.NewMigrator(nil, loader, store)
+	err := m.Up(context.Background())
+	require.Error(s.T(), err)
+	assert.Contains(s.T(), err.Error(), "migration 1 has no up function")
 }
