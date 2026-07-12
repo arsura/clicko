@@ -19,8 +19,9 @@ import (
 
 func TestMain(m *testing.M) {
 	code := m.Run()
-	os.Remove(filepath.Join(os.TempDir(), "clicko"))
-	os.Remove(filepath.Join(os.TempDir(), "clicko.exe"))
+	if buildDir != "" {
+		os.RemoveAll(buildDir)
+	}
 	os.Exit(code)
 }
 
@@ -129,24 +130,30 @@ var (
 	cachedBinaryPath string
 	cachedBinaryErr  error
 	buildOnce        sync.Once
+	// buildDir is the per-run temp directory holding the built binary;
+	// TestMain removes it after the run.
+	buildDir string
 )
 
 // buildClicko compiles the CLI binary once per test process and returns its
-// path. Subsequent calls reuse the cached binary without rebuilding. If the
-// binary already exists on disk from a previous run it is reused directly,
-// skipping the build step entirely.
+// path. Subsequent calls within the same process reuse the cached binary.
+// The binary is always built fresh into a per-run temp directory: reusing a
+// binary left on disk by an interrupted earlier run would silently test stale
+// code, and go's incremental build cache makes the rebuild cheap anyway.
 func buildClicko(t *testing.T) string {
 	t.Helper()
 
 	buildOnce.Do(func() {
-		binPath := filepath.Join(os.TempDir(), "clicko")
+		dir, err := os.MkdirTemp("", "clicko-test-")
+		if err != nil {
+			cachedBinaryErr = fmt.Errorf("failed to create temp dir for binary: %w", err)
+			return
+		}
+		buildDir = dir
+
+		binPath := filepath.Join(dir, "clicko")
 		if runtime.GOOS == "windows" {
 			binPath += ".exe"
-		}
-
-		if _, err := os.Stat(binPath); err == nil {
-			cachedBinaryPath = binPath
-			return
 		}
 
 		cmd := exec.Command("go", "build", "-o", binPath, "../.")
