@@ -119,3 +119,16 @@ func (s *MigratorSuite) TestUpErrorsOnNilUpFunc() {
 	require.Error(s.T(), err)
 	assert.Contains(s.T(), err.Error(), "migration 1 has no up function")
 }
+
+func (s *MigratorSuite) TestDownDoesNotMutateLoaderSlice() {
+	first := mock.NoopMigration(1, "first")
+	second := mock.NoopMigration(2, "second")
+	loader := &mock.MockLoader{Migrations: []*clicko.Migration{first, second}}
+	store := &mock.MockStore{} // nothing applied → down reverts nothing
+
+	m := clicko.NewMigrator(nil, loader, store)
+	require.NoError(s.T(), m.Down(context.Background()))
+
+	assert.Equal(s.T(), []*clicko.Migration{first, second}, loader.Migrations,
+		"down must not reorder the slice owned by the loader")
+}
