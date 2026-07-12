@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"runtime/debug"
+	"syscall"
 
 	"github.com/alecthomas/kong"
 
@@ -79,7 +81,19 @@ func (c *StatusCmd) Run(globals *CLI) error {
 }
 
 func run(globals *CLI, fn func(context.Context, *clicko.Migrator) error) error {
-	ctx := context.Background()
+	// Cancel the context on Ctrl+C / SIGTERM so in-flight statements are
+	// cancelled cleanly instead of the process being killed mid-migration.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// Once the first signal has cancelled ctx, unregister the handler so a
+	// second signal falls back to Go's default behavior and terminates the
+	// process immediately — some driver operations (e.g. the initial dial)
+	// do not watch ctx and would otherwise make Ctrl+C appear ignored.
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 
 	conn, cleanup, err := clickhouse.Dial(ctx, globals.URI)
 	if err != nil {
