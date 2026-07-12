@@ -223,7 +223,8 @@ func (m *Migrator) UpTo(ctx context.Context, target uint64) error {
 	return m.up(ctx, target)
 }
 
-// Down reverts the last applied migration.
+// Down reverts the last applied migration. If that migration is forward-only
+// (no down defined), nothing is reverted.
 func (m *Migrator) Down(ctx context.Context) error {
 	return m.down(ctx, 0, 1)
 }
@@ -252,12 +253,14 @@ func (m *Migrator) down(ctx context.Context, target uint64, limit int) error {
 			break
 		}
 
+		// A forward-only migration cannot be unwound. Reverting migrations
+		// beneath it would leave newer state applied on top of reverted
+		// foundations (e.g. an ADD COLUMN still recorded while the CREATE TABLE
+		// under it was dropped), so stop the rollback here instead of skipping
+		// past it.
 		if !migration.Source.HasDown() {
-			log.Printf("Skipping migration %d: %s (forward-only, no down defined)", migration.Version, migration.Description)
-			if limit > 0 {
-				break
-			}
-			continue
+			log.Printf("Stopping rollback at migration %d: %s (forward-only, no down defined)", migration.Version, migration.Description)
+			break
 		}
 
 		if m.dryRun {
@@ -304,12 +307,14 @@ func (m *Migrator) applyDown(ctx context.Context, migration *Migration) error {
 	return m.store.Remove(ctx, migration.Version)
 }
 
-// DownTo reverts all applied migrations down to (but not including) the target version.
+// DownTo reverts all applied migrations down to (but not including) the target
+// version. Rollback stops early if it reaches a forward-only migration.
 func (m *Migrator) DownTo(ctx context.Context, target uint64) error {
 	return m.down(ctx, target, 0)
 }
 
-// Reset reverts all applied migrations.
+// Reset reverts all applied migrations. Rollback stops early if it reaches a
+// forward-only migration.
 func (m *Migrator) Reset(ctx context.Context) error {
 	return m.down(ctx, 0, 0)
 }
