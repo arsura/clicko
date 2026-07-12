@@ -2,6 +2,8 @@ package clicko_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -123,6 +125,43 @@ func (s *SQLLoaderSuite) TestNonSQLFilesIgnored() {
 		},
 	}
 	assert.Equal(s.T(), expected, got)
+}
+
+func (s *SQLLoaderSuite) TestUppercaseExtensionLoaded() {
+	loader := clicko.NewSQLLoader(testdataDir + "/happy_uppercase_extension")
+
+	got, err := loader.Load()
+	require.NoError(s.T(), err)
+
+	expected := []*clicko.Migration{
+		{
+			Version:     1,
+			Description: "create users",
+			Source: clicko.MigrationSource{
+				Type:  clicko.MigrationSourceTypeSQL,
+				UpSQL: "CREATE TABLE users (id UInt64, name String) ENGINE = MergeTree() ORDER BY id;\n",
+			},
+		},
+	}
+	assert.Equal(s.T(), expected, got)
+}
+
+func (s *SQLLoaderSuite) TestSymlinkedDirectoryIgnored() {
+	dir := s.T().TempDir()
+	linkTarget := s.T().TempDir()
+	require.NoError(s.T(), os.WriteFile(
+		filepath.Join(dir, "00001_create_users.up.sql"),
+		[]byte("CREATE TABLE users (id UInt64) ENGINE = MergeTree() ORDER BY id;\n"),
+		0o644,
+	))
+	require.NoError(s.T(), os.Symlink(linkTarget, filepath.Join(dir, "nested.sql")))
+
+	loader := clicko.NewSQLLoader(dir)
+
+	got, err := loader.Load()
+	require.NoError(s.T(), err)
+	require.Len(s.T(), got, 1)
+	assert.Equal(s.T(), uint64(1), got[0].Version)
 }
 
 func (s *SQLLoaderSuite) TestSubdirectoryIgnored() {
