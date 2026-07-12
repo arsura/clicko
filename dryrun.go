@@ -58,11 +58,13 @@ func (c *dryRunConn) AsyncInsert(_ context.Context, query string, _ bool, args .
 	return nil
 }
 
-func (c *dryRunConn) Ping(_ context.Context) error                  { return nil }
-func (c *dryRunConn) Close() error                                  { return nil }
-func (c *dryRunConn) Stats() driver.Stats                           { return driver.Stats{} }
-func (c *dryRunConn) Contributors() []string                        { return nil }
-func (c *dryRunConn) ServerVersion() (*driver.ServerVersion, error) { return nil, nil }
+func (c *dryRunConn) Ping(_ context.Context) error { return nil }
+func (c *dryRunConn) Close() error                 { return nil }
+func (c *dryRunConn) Stats() driver.Stats          { return driver.Stats{} }
+func (c *dryRunConn) Contributors() []string       { return nil }
+func (c *dryRunConn) ServerVersion() (*driver.ServerVersion, error) {
+	return &driver.ServerVersion{}, nil
+}
 
 // emptyRows implements driver.Rows returning no data.
 // Query/Select calls in dry-run mode return this so the migration
