@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -60,6 +61,26 @@ func parseSQLFilename(name string) (sqlFileInfo, error) {
 	}
 
 	return sqlFileInfo{version: version, description: description, direction: direction}, nil
+}
+
+// blockCommentRegex and lineCommentRegex match SQL comments so
+// isEffectivelyEmptySQL can tell a file with no executable statement (only
+// comments/whitespace) from one that actually has SQL to run.
+var (
+	blockCommentRegex = regexp.MustCompile(`(?s)/\*.*?\*/`)
+	lineCommentRegex  = regexp.MustCompile(`--[^\n]*`)
+)
+
+// isEffectivelyEmptySQL reports whether content has no executable statement
+// once SQL comments are stripped. A .down.sql containing only "-- noop" (a
+// natural way to write a no-op rollback) would otherwise pass the plain
+// TrimSpace check, reach the server as-is, and fail with ClickHouse's "Empty
+// query" error mid-rollback — after migrations above it were already
+// reverted. Catching it at load time turns that into a clear, upfront error.
+func isEffectivelyEmptySQL(content string) bool {
+	s := blockCommentRegex.ReplaceAllString(content, "")
+	s = lineCommentRegex.ReplaceAllString(s, "")
+	return strings.TrimSpace(s) == ""
 }
 
 // validateUpFilesExist returns an error if any migration version has no .up.sql file.
@@ -155,8 +176,8 @@ func (l *sqlLoader) Load() ([]*Migration, error) {
 			return nil, fmt.Errorf("failed to read migration file %q: %w", name, err)
 		}
 
-		if strings.TrimSpace(string(content)) == "" {
-			return nil, fmt.Errorf("migration file %q is empty", name)
+		if isEffectivelyEmptySQL(string(content)) {
+			return nil, fmt.Errorf("migration file %q is empty (or contains only SQL comments, which is not a valid no-op — ClickHouse rejects a comment-only query)", name)
 		}
 
 		switch info.direction {

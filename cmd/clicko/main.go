@@ -27,9 +27,9 @@ type CLI struct {
 
 	Up     UpCmd     `cmd:"" help:"Apply all pending migrations."`
 	UpTo   UpToCmd   `cmd:"up-to" help:"Apply migrations up to a specific version."`
-	Down   DownCmd   `cmd:"" help:"Rollback the last applied migration."`
-	DownTo DownToCmd `cmd:"down-to" help:"Rollback migrations down to a specific version."`
-	Reset  ResetCmd  `cmd:"" help:"Rollback all applied migrations."`
+	Down   DownCmd   `cmd:"" help:"Rollback the last applied migration (skips forward-only migrations, leaving them applied)."`
+	DownTo DownToCmd `cmd:"down-to" help:"Rollback migrations down to a specific version (skips forward-only migrations, leaving them applied)."`
+	Reset  ResetCmd  `cmd:"" help:"Rollback all applied migrations (skips forward-only migrations, leaving them applied)."`
 	Status StatusCmd `cmd:"" help:"Show migration status."`
 }
 

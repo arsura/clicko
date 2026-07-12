@@ -56,8 +56,8 @@ clicko --uri <uri> [flags] <command>
 | Command | Description |
 |---|---|
 | `up` / `up-to <version>` | Apply pending migrations (all, or up to a version) |
-| `down` / `down-to <version>` | Rollback the last migration (or down to a version) |
-| `reset` | Rollback all applied migrations |
+| `down` / `down-to <version>` | Rollback the last migration (or down to a version), skipping any forward-only migration along the way |
+| `reset` | Rollback all applied migrations, skipping any forward-only migration along the way |
 | `status` | Show migration status |
 
 | Flag | Default | Description |
@@ -119,6 +119,8 @@ See the [Go integration example](example/go/README.md) for the full walkthrough,
 ## Best practices
 
 **Prefer forward-only migrations.** ClickHouse DDL like `DROP COLUMN` runs as slow, uninterruptible background mutations. A `down` file doesn't undo anything; it just queues another mutation and can leave the cluster inconsistent in between. Instead of rolling back, write a new `up` migration that reverts the intent. (`down` still works fine for local/dev setups.)
+
+A migration with no `.down.sql` file (or no `DownFunc`, for Go migrations) is forward-only. `down`, `down-to`, and `reset` skip over it — leaving it recorded as applied — and keep reverting the independent migrations underneath. This can leave the tracking table inconsistent with reality if a migration below the forward-only one is something its changes depended on; that's the tradeoff of skipping instead of stopping outright, and it's on you as the operator to know when that's safe. It also means a subsequent `up` may need `--allow-out-of-order` to re-apply the skipped version's neighbors.
 
 **Write idempotent statements.** ClickHouse has no transactional DDL, so a failed multi-statement migration won't roll back. Use `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `DROP TABLE IF EXISTS` so re-runs are always safe.
 
