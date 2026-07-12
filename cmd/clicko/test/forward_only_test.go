@@ -10,9 +10,9 @@ import (
 )
 
 // CLIForwardOnlySuite tests rollback behaviour around forward-only migrations
-// (migrations without a .down.sql file). Rollback must stop when it reaches
-// one: skipping past it and reverting older migrations would leave newer state
-// applied on top of reverted foundations.
+// (migrations without a .down.sql file). Rollback leaves a forward-only
+// migration applied and moves on to revert older migrations underneath it,
+// since those are independent of it.
 type CLIForwardOnlySuite struct {
 	suite.Suite
 	binaryPath            string
@@ -47,16 +47,20 @@ func (s *CLIForwardOnlySuite) SetupTest() {
 	s.testDBURI = testURIWithDB(s.testDBName)
 }
 
-// TestDownStopsAtForwardOnlyMigration verifies that Down() stops at the newest
-// applied migration when it has no down direction, reverting nothing.
-func (s *CLIForwardOnlySuite) TestDownStopsAtForwardOnlyMigration() {
+// TestDownSkipsForwardOnlyMigration verifies that Down() skips over the
+// newest applied migration when it has no down direction, leaving it applied,
+// and finds nothing else to revert underneath (every version in this suite's
+// migrationsDir is forward-only).
+func (s *CLIForwardOnlySuite) TestDownSkipsForwardOnlyMigration() {
 	out, err := runCLI(s.binaryPath, forwardOnlyArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 
 	out, err = runCLI(s.binaryPath, forwardOnlyArgs(s.testDBURI, s.migrationsDir, "down")...)
 	require.NoError(s.T(), err, "down: %s", out)
 	require.Equal(s.T(),
-		"Stopping rollback at migration 3: add age column (forward-only, no down defined)\n"+
+		"Skipping migration 3: add age column (forward-only, no down defined; left applied)\n"+
+			"Skipping migration 2: add email column (forward-only, no down defined; left applied)\n"+
+			"Skipping migration 1: create test table (forward-only, no down defined; left applied)\n"+
 			"No migrations to revert\n",
 		normalizeOutput(out))
 
@@ -68,17 +72,19 @@ func (s *CLIForwardOnlySuite) TestDownStopsAtForwardOnlyMigration() {
 	})
 }
 
-// TestResetStopsAtForwardOnlyMigration verifies that Reset() stops at the
-// newest applied migration when it has no down direction — it must not skip
-// past it and revert the older ones underneath.
-func (s *CLIForwardOnlySuite) TestResetStopsAtForwardOnlyMigration() {
+// TestResetSkipsForwardOnlyMigrations verifies that Reset() skips every
+// forward-only migration, leaving them all applied, when none in the set has
+// a down direction.
+func (s *CLIForwardOnlySuite) TestResetSkipsForwardOnlyMigrations() {
 	out, err := runCLI(s.binaryPath, forwardOnlyArgs(s.testDBURI, s.migrationsDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 
 	out, err = runCLI(s.binaryPath, forwardOnlyArgs(s.testDBURI, s.migrationsDir, "reset")...)
 	require.NoError(s.T(), err, "reset: %s", out)
 	require.Equal(s.T(),
-		"Stopping rollback at migration 3: add age column (forward-only, no down defined)\n"+
+		"Skipping migration 3: add age column (forward-only, no down defined; left applied)\n"+
+			"Skipping migration 2: add email column (forward-only, no down defined; left applied)\n"+
+			"Skipping migration 1: create test table (forward-only, no down defined; left applied)\n"+
 			"No migrations to revert\n",
 		normalizeOutput(out))
 
@@ -90,12 +96,17 @@ func (s *CLIForwardOnlySuite) TestResetStopsAtForwardOnlyMigration() {
 	})
 }
 
-// TestResetStopsAtForwardOnlyWithoutRevertingBelow guards the pre-fix
-// behaviour where Reset() skipped a forward-only migration and kept reverting
-// older ones, leaving version 2 applied while the table from version 1 was
-// dropped. Version 3 (has a down) is reverted, then rollback stops at the
-// forward-only version 2, keeping versions 1 and 2 applied.
-func (s *CLIForwardOnlySuite) TestResetStopsAtForwardOnlyWithoutRevertingBelow() {
+// TestResetSkipsForwardOnlyAndRevertsBelow verifies that Reset() leaves a
+// forward-only migration applied but keeps reverting the migrations above and
+// below it: version 3 (has a down) is reverted, version 2 (forward-only) is
+// skipped and left applied, then version 1's down still runs and drops the
+// table underneath it. This intentionally leaves the tracking table
+// inconsistent with reality (version 2's "add email column" stays recorded
+// as applied even though the table it modified no longer exists) — accepted
+// as the operator's responsibility, same as editing/deleting migration files
+// (see IMPROVEMENT.md #5). Prefer forward-only migrations without a down
+// file in the first place, as the README recommends.
+func (s *CLIForwardOnlySuite) TestResetSkipsForwardOnlyAndRevertsBelow() {
 	out, err := runCLI(s.binaryPath, forwardOnlyArgs(s.testDBURI, s.mixedDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
 
@@ -104,12 +115,13 @@ func (s *CLIForwardOnlySuite) TestResetStopsAtForwardOnlyWithoutRevertingBelow()
 	require.Equal(s.T(),
 		"Reverting migration 3: add age column\n"+
 			"OK\n"+
-			"Stopping rollback at migration 2: add email column (forward-only, no down defined)\n",
+			"Skipping migration 2: add email column (forward-only, no down defined; left applied)\n"+
+			"Reverting migration 1: create test table\n"+
+			"OK\n",
 		normalizeOutput(out))
 
 	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+"."+testForwardOnlyMigrationTable)
 	assertAppliedMigrations(s.T(), actual, []appliedMigration{
-		{Version: 1, Description: "create test table"},
 		{Version: 2, Description: "add email column"},
 	})
 }
