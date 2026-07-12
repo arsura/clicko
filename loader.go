@@ -85,7 +85,9 @@ func validateUpFilesExist(migrationsMap map[uint64]*Migration) error {
 //	00001_create_users.down.sql
 //
 // Validation rules:
-//   - Every .sql file must match the naming convention exactly.
+//   - Every .sql file must match the naming convention exactly. The ".sql"
+//     extension is matched case-insensitively; the direction must be
+//     lowercase "up" or "down".
 //   - Every version must have an .up.sql file; .down.sql is optional.
 //   - The up and down files for the same version must share the same description.
 //   - Each version may have at most one file per direction. Versions are compared
@@ -103,11 +105,24 @@ func (l *sqlLoader) Load() ([]*Migration, error) {
 	seenFiles := make(map[string]string)
 
 	for _, file := range files {
-		if file.IsDir() || !strings.HasSuffix(file.Name(), ".sql") {
+		name := file.Name()
+
+		// Match the extension case-insensitively so a ".SQL" file is loaded
+		// instead of being silently dropped from the migration set.
+		if !strings.EqualFold(filepath.Ext(name), ".sql") {
 			continue
 		}
 
-		name := file.Name()
+		// file.IsDir() reports false for a symlink pointing at a directory;
+		// Stat follows the link so those are skipped like plain directories.
+		stat, err := os.Stat(filepath.Join(l.dir, name))
+		if err != nil {
+			return nil, fmt.Errorf("failed to stat %q: %w", name, err)
+		}
+		if stat.IsDir() {
+			continue
+		}
+
 		info, err := parseSQLFilename(name)
 		if err != nil {
 			return nil, err
