@@ -64,6 +64,8 @@ func (m *Migrator) up(ctx context.Context, target uint64) error {
 		return err
 	}
 
+	warnUnknownTarget(migrations, target)
+
 	appliedCount := 0
 	for _, migration := range migrations {
 		if _, ok := applied[migration.Version]; ok {
@@ -237,6 +239,8 @@ func (m *Migrator) down(ctx context.Context, target uint64, limit int) error {
 		return err
 	}
 
+	warnUnknownTarget(migrations, target)
+
 	migrations = slices.Clone(migrations)
 	slices.Reverse(migrations)
 
@@ -317,6 +321,24 @@ func (m *Migrator) DownTo(ctx context.Context, target uint64) error {
 // forward-only migration.
 func (m *Migrator) Reset(ctx context.Context) error {
 	return m.down(ctx, 0, 0)
+}
+
+// warnUnknownTarget logs a warning when an up-to/down-to target does not match
+// any known migration version. Stopping between versions is still honored —
+// the run proceeds with the target as a bound — but a typo'd version (e.g. a
+// timestamp one digit off) would otherwise silently apply or keep everything
+// below the bogus bound, so make it visible. target=0 is the internal
+// "no bound" sentinel used by Up/Down/Reset and is exempt.
+func warnUnknownTarget(migrations []*Migration, target uint64) {
+	if target == 0 {
+		return
+	}
+	known := slices.ContainsFunc(migrations, func(m *Migration) bool {
+		return m.Version == target
+	})
+	if !known {
+		log.Printf("Warning: target version %d does not match any known migration", target)
+	}
 }
 
 // checkOutOfOrder detects pending migrations whose version is lower than the
