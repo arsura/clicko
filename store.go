@@ -80,13 +80,13 @@ func quoteIdent(name string) string {
 }
 
 // ResolveEngine returns the engine clause to use when creating the migration table.
-// Priority: CustomEngine > ReplicatedMergeTree (cluster, with warning) > MergeTree.
+// Priority: CustomEngine > ReplicatedMergeTree (cluster) > MergeTree.
+// NewStore warns once about the default cluster engine's {shard} ZooKeeper path.
 func (c StoreConfig) ResolveEngine() string {
 	if c.CustomEngine != "" {
 		return c.CustomEngine
 	}
 	if c.IsCluster() {
-		log.Printf("Warning: no custom engine specified for cluster mode; falling back to the default engine whose ZooKeeper path includes {shard}, which may result in separate replication groups per shard and inconsistent migration state across nodes — set a custom engine with a unified ZooKeeper path to avoid this")
 		return defaultClusterEngine
 	}
 	return defaultMergeTreeEngine
@@ -197,6 +197,13 @@ func NewStore(conn clickhouse.Conn, config StoreConfig) (Store, error) {
 	// tracking table exists to provide, so call it out.
 	if config.IsCluster() && config.InsertQuorum == "" {
 		log.Printf("Warning: cluster mode without insert quorum; a node that misses a migration write may re-run the migration — set InsertQuorum (Go) or --insert-quorum (CLI) to the total number of nodes (shards × replicas) or \"auto\"")
+	}
+
+	// Warn here rather than in ResolveEngine so a long-lived Migrator does not
+	// repeat the warning every time the CREATE DDL is built (each apply run and
+	// each dry-run preview).
+	if config.IsCluster() && config.CustomEngine == "" {
+		log.Printf("Warning: no custom engine specified for cluster mode; falling back to the default engine whose ZooKeeper path includes {shard}, which may result in separate replication groups per shard and inconsistent migration state across nodes — set a custom engine with a unified ZooKeeper path to avoid this")
 	}
 
 	return &store{

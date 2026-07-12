@@ -19,7 +19,7 @@ func TestStoreConfig_ResolveEngine(t *testing.T) {
 			expected: defaultMergeTreeEngine,
 		},
 		{
-			name:     "cluster without custom engine uses ReplicatedMergeTree with warning",
+			name:     "cluster without custom engine uses ReplicatedMergeTree",
 			config:   StoreConfig{Cluster: "my_cluster"},
 			expected: defaultClusterEngine,
 		},
