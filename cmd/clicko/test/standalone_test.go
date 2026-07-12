@@ -360,6 +360,19 @@ func (s *CLIStandaloneSuite) TestUpThenDownThenUpAgain() {
 // Error cases
 // ---------------------------------------------------------------------------
 
+func (s *CLIStandaloneSuite) TestReservedWordTableName() {
+	out, err := runCLI(s.binaryPath,
+		"up",
+		"--uri", s.testDBURI,
+		"--dir", s.migrationsDir,
+		"--table", "order",
+	)
+	require.NoError(s.T(), err, "cli output: %s", out)
+
+	actual := queryAppliedMigrationsFrom(s.T(), s.conn, s.testDBName+".`order`")
+	assertAppliedMigrations(s.T(), actual, expectedMigrations)
+}
+
 func (s *CLIStandaloneSuite) TestInvalidMigrationsDir() {
 	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, "/nonexistent/path", "up")...)
 	require.Error(s.T(), err)

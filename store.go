@@ -73,6 +73,27 @@ func (c StoreConfig) IsCluster() bool {
 	return c.Cluster != ""
 }
 
+// quotedTableName returns TableName with each identifier backtick-quoted
+// (quoting the database and table parts separately), so reserved words like
+// "order" or "table" work as names instead of failing with a server-side
+// syntax error.
+func (c StoreConfig) quotedTableName() string {
+	db, table, qualified := strings.Cut(c.TableName, ".")
+	if !qualified {
+		return quoteIdent(db)
+	}
+	return quoteIdent(db) + "." + quoteIdent(table)
+}
+
+// quoteIdent wraps a ClickHouse identifier in backticks, escaping any embedded
+// backtick by doubling it. NewStore already restricts Cluster to a plain
+// identifier, so this is defense-in-depth for the SQL built from it: it keeps
+// the value from breaking out of the backtick quoting even if that invariant
+// were ever weakened.
+func quoteIdent(name string) string {
+	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+}
+
 // ResolveEngine returns the engine clause to use when creating the migration table.
 // Priority: CustomEngine > ReplicatedMergeTree (cluster, with warning) > MergeTree.
 func (c StoreConfig) ResolveEngine() string {
@@ -192,7 +213,7 @@ func (s *store) EnsureTable(ctx context.Context) error {
 // CreateTableDDL builds the CREATE TABLE statement for the tracking table.
 // EnsureTable executes it; dry-run mode prints it as a preview.
 func (s *store) CreateTableDDL() string {
-	createStmt := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s", s.config.TableName)
+	createStmt := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s", s.config.quotedTableName())
 
 	if s.config.IsCluster() {
 		createStmt += " ON CLUSTER " + quoteIdent(s.config.Cluster)
@@ -211,20 +232,11 @@ func (s *store) CreateTableDDL() string {
 // which is read-only — unlike EnsureTable, it never executes DDL.
 func (s *store) TableExists(ctx context.Context) (bool, error) {
 	var exists uint8
-	query := fmt.Sprintf("EXISTS TABLE %s", s.config.TableName)
+	query := fmt.Sprintf("EXISTS TABLE %s", s.config.quotedTableName())
 	if err := s.conn.QueryRow(ctx, query).Scan(&exists); err != nil {
 		return false, err
 	}
 	return exists == 1, nil
-}
-
-// quoteIdent wraps a ClickHouse identifier in backticks, escaping any embedded
-// backtick by doubling it. NewStore already restricts Cluster to a plain
-// identifier, so this is defense-in-depth for the SQL built from it: it keeps
-// the value from breaking out of the backtick quoting even if that invariant
-// were ever weakened.
-func quoteIdent(name string) string {
-	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
 }
 
 // GetAppliedVersions returns all applied migrations keyed by version number.
@@ -237,7 +249,7 @@ func (s *store) GetAppliedVersions(ctx context.Context) (map[uint64]*Migration, 
 		}))
 	}
 
-	query := fmt.Sprintf("SELECT version, description, applied_at FROM %s ORDER BY version DESC", s.config.TableName)
+	query := fmt.Sprintf("SELECT version, description, applied_at FROM %s ORDER BY version DESC", s.config.quotedTableName())
 	rows, err := s.conn.Query(ctx, query)
 	if err != nil {
 		return nil, err
@@ -276,7 +288,7 @@ func (s *store) Add(ctx context.Context, version uint64, description string) err
 		}))
 	}
 
-	insertStmt := fmt.Sprintf("INSERT INTO %s (version, description) VALUES (?, ?)", s.config.TableName)
+	insertStmt := fmt.Sprintf("INSERT INTO %s (version, description) VALUES (?, ?)", s.config.quotedTableName())
 	return s.conn.Exec(ctx, insertStmt, version, description)
 }
 
@@ -287,7 +299,7 @@ func (s *store) Remove(ctx context.Context, version uint64) error {
 		"mutations_sync": 2,
 	}))
 
-	deleteStmt := fmt.Sprintf("ALTER TABLE %s", s.config.TableName)
+	deleteStmt := fmt.Sprintf("ALTER TABLE %s", s.config.quotedTableName())
 	if s.config.IsCluster() {
 		deleteStmt += " ON CLUSTER " + quoteIdent(s.config.Cluster)
 	}

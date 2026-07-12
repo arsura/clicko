@@ -54,7 +54,7 @@ func (s *CLIDryRunSuite) SetupTest() {
 // where the tracking table does not exist yet: instead of creating it, the
 // CREATE TABLE DDL is shown as part of the preview.
 const dryRunTrackingTablePreview = "=== Migration tracking table (would be created on apply) ===\n" +
-	"CREATE TABLE IF NOT EXISTS " + testDryRunMigrationTable + " (\n" +
+	"CREATE TABLE IF NOT EXISTS `" + testDryRunMigrationTable + "` (\n" +
 	"    version UInt64,\n" +
 	"    description String,\n" +
 	"    applied_at DateTime64(6) DEFAULT now64(6)\n" +
@@ -142,7 +142,7 @@ func (s *CLIDryRunSuite) TestUpClusterDoesNotCreateTrackingTable() {
 	require.NoError(s.T(), err, "cli output: %s", out)
 	require.Contains(s.T(), out, "=== Migration tracking table (would be created on apply) ===")
 	require.Contains(s.T(), out,
-		"CREATE TABLE IF NOT EXISTS "+testClusterMigrationTable+" ON CLUSTER `"+migrationCluster+"`")
+		"CREATE TABLE IF NOT EXISTS `"+testClusterMigrationTable+"` ON CLUSTER `"+migrationCluster+"`")
 
 	var count uint64
 	err = s.conn.QueryRow(context.Background(),
