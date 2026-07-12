@@ -54,8 +54,6 @@ func TestRedactCredentials(t *testing.T) {
 			want: "clickhouse://user:xxxxx@localhost:9000/db",
 		},
 		{
-			// Over-redaction of a non-credential "@" later in the token is the
-			// accepted trade-off for never leaking part of a password.
 			name: "at sign in query string over-redacts rather than leaks",
 			in:   "clickhouse://localhost:9000/db?owner=a@b",
 			want: "clickhouse://localhost:xxxxx@b",
