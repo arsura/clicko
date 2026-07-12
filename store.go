@@ -23,24 +23,24 @@ var (
 	identRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	// tableNameRegex matches a table name with an optional database qualifier (db.table).
 	tableNameRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$`)
-)
 
-// managedEngineClauses are CREATE TABLE clauses that clicko appends or controls
-// itself. They must not appear in a CustomEngine, which is only the engine
-// expression — otherwise the generated DDL would be malformed (e.g. a duplicate
-// ORDER BY, or a SETTINGS clause placed before the appended ORDER BY).
-// Matched as regexes so multi-word clauses are caught with any whitespace
-// between the words (e.g. "ORDER \t BY"), not just a single space.
-var managedEngineClauses = []struct {
-	name string
-	re   *regexp.Regexp
-}{
-	{"order by", regexp.MustCompile(`(?i)\border\s+by\b`)},
-	{"partition by", regexp.MustCompile(`(?i)\bpartition\s+by\b`)},
-	{"primary key", regexp.MustCompile(`(?i)\bprimary\s+key\b`)},
-	{"sample by", regexp.MustCompile(`(?i)\bsample\s+by\b`)},
-	{"settings", regexp.MustCompile(`(?i)\bsettings\b`)},
-}
+	// managedEngineClauses are CREATE TABLE clauses that clicko appends or controls
+	// itself. They must not appear in a CustomEngine, which is only the engine
+	// expression — otherwise the generated DDL would be malformed (e.g. a duplicate
+	// ORDER BY, or a SETTINGS clause placed before the appended ORDER BY).
+	// Matched as regexes so multi-word clauses are caught with any whitespace
+	// between the words (e.g. "ORDER \t BY"), not just a single space.
+	managedEngineClauses = []struct {
+		name string
+		re   *regexp.Regexp
+	}{
+		{"order by", regexp.MustCompile(`(?i)\border\s+by\b`)},
+		{"partition by", regexp.MustCompile(`(?i)\bpartition\s+by\b`)},
+		{"primary key", regexp.MustCompile(`(?i)\bprimary\s+key\b`)},
+		{"sample by", regexp.MustCompile(`(?i)\bsample\s+by\b`)},
+		{"settings", regexp.MustCompile(`(?i)\bsettings\b`)},
+	}
+)
 
 // StoreConfig holds configuration for the migration state store.
 //
