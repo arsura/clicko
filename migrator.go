@@ -242,8 +242,8 @@ func (m *Migrator) UpTo(ctx context.Context, target uint64) error {
 	return m.up(ctx, target)
 }
 
-// Down reverts the last applied migration. If that migration is forward-only
-// (no down defined), nothing is reverted.
+// Down reverts the last applied migration that has a down direction defined,
+// skipping over (and leaving applied) any forward-only migrations above it.
 func (m *Migrator) Down(ctx context.Context) error {
 	return m.down(ctx, 0, 1)
 }
@@ -274,14 +274,12 @@ func (m *Migrator) down(ctx context.Context, target uint64, limit int) error {
 			break
 		}
 
-		// A forward-only migration cannot be unwound. Reverting migrations
-		// beneath it would leave newer state applied on top of reverted
-		// foundations (e.g. an ADD COLUMN still recorded while the CREATE TABLE
-		// under it was dropped), so stop the rollback here instead of skipping
-		// past it.
+		// A forward-only migration cannot be unwound: there is no SQL/Go
+		// function to run for it. Leave it recorded as applied and move on to
+		// older migrations underneath, which are independent of it.
 		if !migration.Source.HasDown() {
-			log.Printf("Stopping rollback at migration %d: %s (forward-only, no down defined)", migration.Version, migration.Description)
-			break
+			log.Printf("Skipping migration %d: %s (forward-only, no down defined; left applied)", migration.Version, migration.Description)
+			continue
 		}
 
 		if m.dryRun {
@@ -329,7 +327,8 @@ func (m *Migrator) applyDown(ctx context.Context, migration *Migration) error {
 }
 
 // DownTo reverts all applied migrations down to (but not including) the target
-// version. Rollback stops early if it reaches a forward-only migration.
+// version. Forward-only migrations along the way are left applied and skipped;
+// everything below them is still reverted.
 // Target 0 is rejected: version 0 is reserved (the loader and registry refuse
 // it), and down uses 0 internally as the "no bound" sentinel, so a 0 target
 // would silently behave like Reset — the most destructive command — instead
@@ -341,8 +340,8 @@ func (m *Migrator) DownTo(ctx context.Context, target uint64) error {
 	return m.down(ctx, target, 0)
 }
 
-// Reset reverts all applied migrations. Rollback stops early if it reaches a
-// forward-only migration.
+// Reset reverts all applied migrations. Forward-only migrations are left
+// applied and skipped; everything below them is still reverted.
 func (m *Migrator) Reset(ctx context.Context) error {
 	return m.down(ctx, 0, 0)
 }
