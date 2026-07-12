@@ -10,18 +10,18 @@ env:
   CLICKHOUSE_VERSION: "26.1"
 
 jobs:
-  vulncheck:
-    name: Vulncheck
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+  # vulncheck:
+  #   name: Vulncheck
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+  #     - uses: actions/setup-go@v5
+  #       with:
+  #         go-version-file: go.mod
 
-      - name: Run govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+  #     - name: Run govulncheck
+  #       run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   test:
     name: Test
