@@ -2,8 +2,8 @@ package clickhouse
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"regexp"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
@@ -12,7 +12,12 @@ import (
 func Dial(ctx context.Context, uri string) (clickhouse.Conn, func() error, error) {
 	opts, err := clickhouse.ParseDSN(uri)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse URI: %s", redactCredentials(err.Error()))
+		// The parse error echoes the raw URI, which may contain credentials.
+		// Redacting the echoed text proved brittle (each malformed-password
+		// shape needs its own handling), so return a fixed message instead —
+		// it keeps credentials out of stderr, CI logs, and shell history,
+		// the whole reason the CLI steers users toward the CLICKO_URI env var.
+		return nil, nil, errors.New("failed to parse URI: please recheck the URI (expected format: clickhouse://user:pass@host:9000/db)")
 	}
 
 	conn, err := clickhouse.Open(opts)
@@ -28,22 +33,4 @@ func Dial(ctx context.Context, uri string) (clickhouse.Conn, func() error, error
 	return conn, func() error {
 		return conn.Close()
 	}, nil
-}
-
-// credentialRegex matches the password segment of a DSN userinfo
-// (scheme://user:PASSWORD@host) so it can be stripped before the value is
-// surfaced in an error message or log line. The password is matched greedily
-// as \S+ up to the last "@" in the token: a malformed password containing
-// "/", "?", "#", or even "@" (exactly the kind that makes ParseDSN fail and
-// echo the URI back) is still fully masked. The bias is deliberate — when a
-// non-credential "@" appears later in the same token this over-redacts, which
-// is the safe direction; it must never under-redact.
-var credentialRegex = regexp.MustCompile(`(://[^:/?#@\s]*:)\S+(@)`)
-
-// redactCredentials replaces the password in any DSN-shaped substring with a
-// placeholder. ParseDSN embeds the raw URI in its error, so redacting the
-// error text keeps credentials out of stderr, CI logs, and shell history —
-// the whole reason the CLI steers users toward the CLICKO_URI env var.
-func redactCredentials(s string) string {
-	return credentialRegex.ReplaceAllString(s, "${1}xxxxx${2}")
 }

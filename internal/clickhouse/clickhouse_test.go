@@ -1,79 +1,55 @@
 package clickhouse
 
-import "testing"
+import (
+	"context"
+	"strings"
+	"testing"
+)
 
-func TestRedactCredentials(t *testing.T) {
+// TestDialParseErrorDoesNotLeakURI verifies that a URI failing to parse is
+// never echoed back in the error. Every input here fails inside ParseDSN, so
+// Dial returns before any network I/O. The passwords are deliberately the
+// malformed shapes that make ParseDSN fail and embed the raw URI in its own
+// error text (unencoded space, bad port, broken percent-escape).
+func TestDialParseErrorDoesNotLeakURI(t *testing.T) {
 	tests := []struct {
 		name string
-		in   string
-		want string
+		uri  string
 	}{
 		{
-			name: "password in dsn is redacted",
-			in:   "clickhouse://admin:SuperSecret123@localhost:9000/db",
-			want: "clickhouse://admin:xxxxx@localhost:9000/db",
+			name: "password with unencoded space",
+			uri:  "clickhouse://user:Super Secret123@localhost:9000/db",
 		},
 		{
-			name: "password redacted inside a wrapping error message",
-			in:   `parse "clickhouse://admin:SuperSecret123@localhost:bad_port/db": invalid port`,
-			want: `parse "clickhouse://admin:xxxxx@localhost:bad_port/db": invalid port`,
+			name: "invalid port",
+			uri:  "clickhouse://user:SuperSecret123@localhost:bad_port/db",
 		},
 		{
-			name: "empty password is left as-is",
-			in:   "clickhouse://default:@localhost:9000/db",
-			want: "clickhouse://default:@localhost:9000/db",
+			name: "broken percent escape in password",
+			uri:  "clickhouse://user:Super%zzSecret123@localhost:9000/db",
 		},
 		{
-			name: "userinfo without password is left as-is",
-			in:   "clickhouse://useronly@localhost:9000/db",
-			want: "clickhouse://useronly@localhost:9000/db",
-		},
-		{
-			name: "no userinfo is left as-is",
-			in:   "clickhouse://localhost:9000/db",
-			want: "clickhouse://localhost:9000/db",
-		},
-		{
-			name: "password with special characters is redacted",
-			in:   "clickhouse://user:p%40ss.w-rd@localhost:9000/db",
-			want: "clickhouse://user:xxxxx@localhost:9000/db",
-		},
-		{
-			name: "password with unencoded slash is redacted",
-			in:   "clickhouse://user:pa/ss@localhost:9000/db",
-			want: "clickhouse://user:xxxxx@localhost:9000/db",
-		},
-		{
-			name: "password with unencoded question mark and hash is redacted",
-			in:   "clickhouse://user:pa?s#s@localhost:9000/db",
-			want: "clickhouse://user:xxxxx@localhost:9000/db",
-		},
-		{
-			name: "password with unencoded at sign is fully redacted",
-			in:   "clickhouse://user:p@ss@localhost:9000/db",
-			want: "clickhouse://user:xxxxx@localhost:9000/db",
-		},
-		{
-			name: "at sign in query string over-redacts rather than leaks",
-			in:   "clickhouse://localhost:9000/db?owner=a@b",
-			want: "clickhouse://localhost:xxxxx@b",
-		},
-		{
-			name: "string without a dsn is unchanged",
-			in:   "failed to connect: connection refused",
-			want: "failed to connect: connection refused",
-		},
-		{
-			name: "empty string is unchanged",
-			in:   "",
-			want: "",
+			name: "password with unencoded slash and question mark",
+			uri:  "clickhouse://user:Super/Secret?123@localhost:9000/db",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := redactCredentials(tt.in); got != tt.want {
-				t.Errorf("redactCredentials(%q) = %q, want %q", tt.in, got, tt.want)
+			conn, cleanup, err := Dial(context.Background(), tt.uri)
+			if err == nil {
+				t.Fatalf("Dial(%q) succeeded, want parse error", tt.uri)
+			}
+			if conn != nil || cleanup != nil {
+				t.Errorf("Dial(%q) returned non-nil conn/cleanup alongside error", tt.uri)
+			}
+			if !strings.Contains(err.Error(), "failed to parse URI") {
+				t.Errorf("Dial(%q) error %q, want it to mention \"failed to parse URI\"", tt.uri, err)
+			}
+			for _, secret := range []string{"Secret123", tt.uri} {
+				if strings.Contains(err.Error(), secret) {
+					t.Errorf("Dial(%q) error %q leaks %q", tt.uri, err, secret)
+				}
 			}
 		})
 	}
