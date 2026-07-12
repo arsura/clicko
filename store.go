@@ -228,15 +228,50 @@ func (s *store) CreateTableDDL() string {
 	return createStmt
 }
 
-// TableExists reports whether the tracking table exists via EXISTS TABLE,
-// which is read-only — unlike EnsureTable, it never executes DDL.
+// TableExists reports whether the tracking table exists. It is read-only —
+// unlike EnsureTable, it never executes DDL. In cluster mode the table must
+// exist on every replica of the cluster: a connection through a load balancer
+// only sees one node, and anything less than full presence means an apply
+// would still need to run the ON CLUSTER CREATE DDL to converge the cluster.
 func (s *store) TableExists(ctx context.Context) (bool, error) {
+	if s.config.IsCluster() {
+		return s.tableExistsOnCluster(ctx)
+	}
+
 	var exists uint8
 	query := fmt.Sprintf("EXISTS TABLE %s", s.config.quotedTableName())
 	if err := s.conn.QueryRow(ctx, query).Scan(&exists); err != nil {
 		return false, err
 	}
 	return exists == 1, nil
+}
+
+// tableExistsOnCluster checks every replica via clusterAllReplicas and reports
+// true only when the tracking table is present on all of them.
+func (s *store) tableExistsOnCluster(ctx context.Context) (bool, error) {
+	db, table, qualified := strings.Cut(s.config.TableName, ".")
+	if !qualified {
+		table = db
+		// Resolve the connection's database locally: currentDatabase() inside
+		// a clusterAllReplicas subquery would evaluate on the remote nodes,
+		// whose default database may differ from this session's.
+		if err := s.conn.QueryRow(ctx, "SELECT currentDatabase()").Scan(&db); err != nil {
+			return false, err
+		}
+	}
+
+	cluster := quoteIdent(s.config.Cluster)
+	query := fmt.Sprintf(
+		"SELECT (SELECT count() FROM clusterAllReplicas(%s, system.tables) WHERE database = ? AND name = ?)"+
+			" = (SELECT count() FROM clusterAllReplicas(%s, system.one))",
+		cluster, cluster,
+	)
+
+	var existsEverywhere uint8
+	if err := s.conn.QueryRow(ctx, query, db, table).Scan(&existsEverywhere); err != nil {
+		return false, err
+	}
+	return existsEverywhere == 1, nil
 }
 
 // GetAppliedVersions returns all applied migrations keyed by version number.
