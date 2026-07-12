@@ -32,8 +32,13 @@ func Dial(ctx context.Context, uri string) (clickhouse.Conn, func() error, error
 
 // credentialRegex matches the password segment of a DSN userinfo
 // (scheme://user:PASSWORD@host) so it can be stripped before the value is
-// surfaced in an error message or log line.
-var credentialRegex = regexp.MustCompile(`(://[^:/?#@\s]*:)[^@/?#\s]+(@)`)
+// surfaced in an error message or log line. The password is matched greedily
+// as \S+ up to the last "@" in the token: a malformed password containing
+// "/", "?", "#", or even "@" (exactly the kind that makes ParseDSN fail and
+// echo the URI back) is still fully masked. The bias is deliberate — when a
+// non-credential "@" appears later in the same token this over-redacts, which
+// is the safe direction; it must never under-redact.
+var credentialRegex = regexp.MustCompile(`(://[^:/?#@\s]*:)\S+(@)`)
 
 // redactCredentials replaces the password in any DSN-shaped substring with a
 // placeholder. ParseDSN embeds the raw URI in its error, so redacting the

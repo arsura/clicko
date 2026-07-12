@@ -39,6 +39,28 @@ func TestRedactCredentials(t *testing.T) {
 			want: "clickhouse://user:xxxxx@localhost:9000/db",
 		},
 		{
+			name: "password with unencoded slash is redacted",
+			in:   "clickhouse://user:pa/ss@localhost:9000/db",
+			want: "clickhouse://user:xxxxx@localhost:9000/db",
+		},
+		{
+			name: "password with unencoded question mark and hash is redacted",
+			in:   "clickhouse://user:pa?s#s@localhost:9000/db",
+			want: "clickhouse://user:xxxxx@localhost:9000/db",
+		},
+		{
+			name: "password with unencoded at sign is fully redacted",
+			in:   "clickhouse://user:p@ss@localhost:9000/db",
+			want: "clickhouse://user:xxxxx@localhost:9000/db",
+		},
+		{
+			// Over-redaction of a non-credential "@" later in the token is the
+			// accepted trade-off for never leaking part of a password.
+			name: "at sign in query string over-redacts rather than leaks",
+			in:   "clickhouse://localhost:9000/db?owner=a@b",
+			want: "clickhouse://localhost:xxxxx@b",
+		},
+		{
 			name: "string without a dsn is unchanged",
 			in:   "failed to connect: connection refused",
 			want: "failed to connect: connection refused",
