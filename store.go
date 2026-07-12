@@ -25,6 +25,23 @@ var (
 	tableNameRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$`)
 )
 
+// managedEngineClauses are CREATE TABLE clauses that clicko appends or controls
+// itself. They must not appear in a CustomEngine, which is only the engine
+// expression — otherwise the generated DDL would be malformed (e.g. a duplicate
+// ORDER BY, or a SETTINGS clause placed before the appended ORDER BY).
+// Matched as regexes so multi-word clauses are caught with any whitespace
+// between the words (e.g. "ORDER \t BY"), not just a single space.
+var managedEngineClauses = []struct {
+	name string
+	re   *regexp.Regexp
+}{
+	{"order by", regexp.MustCompile(`(?i)\border\s+by\b`)},
+	{"partition by", regexp.MustCompile(`(?i)\bpartition\s+by\b`)},
+	{"primary key", regexp.MustCompile(`(?i)\bprimary\s+key\b`)},
+	{"sample by", regexp.MustCompile(`(?i)\bsample\s+by\b`)},
+	{"settings", regexp.MustCompile(`(?i)\bsettings\b`)},
+}
+
 // StoreConfig holds configuration for the migration state store.
 //
 // Several fields are interpolated directly into SQL statements (identifiers and
@@ -121,20 +138,13 @@ func (c StoreConfig) validateCustomEngine() error {
 		return fmt.Errorf("invalid custom engine %q: must not contain statement terminators (\";\") or comment sequences (\"--\", \"/*\")", c.CustomEngine)
 	}
 
-	// managedEngineClauses are CREATE TABLE clauses that clicko appends or controls
-	// itself. They must not appear in a CustomEngine, which is only the engine
-	// expression — otherwise the generated DDL would be malformed (e.g. a duplicate
-	// ORDER BY, or a SETTINGS clause placed before the appended ORDER BY).
-	managedEngineClauses := []string{"order by", "partition by", "primary key", "sample by", "settings"}
-
 	// CustomEngine must be the engine expression only. clicko controls the
 	// tracking table's schema and appends "ORDER BY version" itself, so any
 	// managed clause here would produce a malformed DDL. Reject it upfront with a
 	// clear message instead of surfacing a confusing server-side parse error.
-	lowerEngine := strings.ToLower(c.CustomEngine)
 	for _, clause := range managedEngineClauses {
-		if strings.Contains(lowerEngine, clause) {
-			return fmt.Errorf("invalid custom engine %q: must contain only the engine expression; the %q clause is managed by clicko and must not be included", c.CustomEngine, clause)
+		if clause.re.MatchString(c.CustomEngine) {
+			return fmt.Errorf("invalid custom engine %q: must contain only the engine expression; the %q clause is managed by clicko and must not be included", c.CustomEngine, clause.name)
 		}
 	}
 

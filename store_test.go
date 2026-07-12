@@ -90,6 +90,10 @@ func TestNewStore_ValidatesConfigValid(t *testing.T) {
 			name:   "custom engine with legitimate syntax is valid",
 			config: StoreConfig{CustomEngine: "ReplicatedMergeTree('/clickhouse/tables/{database}/{table}', '{replica}')"},
 		},
+		{
+			name:   "custom engine whose name embeds a managed keyword is valid",
+			config: StoreConfig{CustomEngine: "MySettingsMergeTree()"},
+		},
 		// --- InsertQuorum ---
 		{
 			name:   "numeric insert quorum with cluster is valid",
@@ -239,6 +243,21 @@ func TestNewStore_ValidatesConfigInvalid(t *testing.T) {
 		{
 			name:        "custom engine with partition by clause is rejected",
 			config:      StoreConfig{CustomEngine: "MergeTree() PARTITION BY tuple()"},
+			errContains: "invalid custom engine",
+		},
+		{
+			name:        "custom engine with tab-separated order by clause is rejected",
+			config:      StoreConfig{CustomEngine: "MergeTree() ORDER\tBY version"},
+			errContains: "invalid custom engine",
+		},
+		{
+			name:        "custom engine with multi-space order by clause is rejected",
+			config:      StoreConfig{CustomEngine: "MergeTree() ORDER  BY version"},
+			errContains: "invalid custom engine",
+		},
+		{
+			name:        "custom engine with newline-separated primary key clause is rejected",
+			config:      StoreConfig{CustomEngine: "MergeTree() PRIMARY\nKEY version"},
 			errContains: "invalid custom engine",
 		},
 		// --- InsertQuorum ---
