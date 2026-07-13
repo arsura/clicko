@@ -132,3 +132,30 @@ func (s *MigratorSuite) TestDownDoesNotMutateLoaderSlice() {
 	assert.Equal(s.T(), []*clicko.Migration{first, second}, loader.Migrations,
 		"down must not reorder the slice owned by the loader")
 }
+
+func (s *MigratorSuite) TestUpToBelowOutOfOrderVersionReturnsNil() {
+	loader := &mock.MockLoader{Migrations: []*clicko.Migration{
+		mock.NoopMigration(1, "first"),
+		mock.NoopMigration(2, "gap"),
+		mock.NoopMigration(3, "third"),
+	}}
+	store := &mock.MockStore{Applied: mock.AppliedVersions(1, 3)} // v2 pending, out of order, maxApplied=3
+
+	m := clicko.NewMigrator(nil, loader, store)
+	err := m.UpTo(context.Background(), 1)
+	require.NoError(s.T(), err, "target 1 is already satisfied and below the out-of-order v2, which this run would never reach")
+}
+
+func (s *MigratorSuite) TestUpToAtOutOfOrderVersionReturnsError() {
+	loader := &mock.MockLoader{Migrations: []*clicko.Migration{
+		mock.NoopMigration(1, "first"),
+		mock.NoopMigration(2, "gap"),
+		mock.NoopMigration(3, "third"),
+	}}
+	store := &mock.MockStore{Applied: mock.AppliedVersions(1, 3)} // v2 pending, out of order, maxApplied=3
+
+	m := clicko.NewMigrator(nil, loader, store)
+	err := m.UpTo(context.Background(), 2)
+	require.Error(s.T(), err, "target 2 would apply the out-of-order v2 this run")
+	assert.Contains(s.T(), err.Error(), "version(s) [2] are pending but version 3 is already applied")
+}
