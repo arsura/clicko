@@ -66,7 +66,7 @@ clicko --uri <uri> [flags] <command>
 | `--dir` | `migrations` | Migration files directory |
 | `--table` | `migration_versions` | Tracking table name |
 | `--cluster` | | Cluster name (enables `ON CLUSTER`) |
-| `--engine` | | Custom engine for the tracking table |
+| `--engine` | | Custom engine for the tracking table (MergeTree family — clicko appends `ORDER BY version` to the DDL) |
 | `--insert-quorum` | | Write quorum (number or `"auto"`) |
 | `--dry-run` | | Print SQL without executing |
 | `--allow-out-of-order` | | Allow pending migrations older than the highest applied version |

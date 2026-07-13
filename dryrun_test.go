@@ -2,6 +2,7 @@ package clicko_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -52,6 +53,56 @@ func (s *DryRunGoMigrationSuite) TestUpCapturesExecSQL() {
 	expected := "=== Version 1: create users (go) ===\n" +
 		"CREATE TABLE IF NOT EXISTS users (id UInt64) ENGINE = MergeTree() ORDER BY id\n\n"
 	assert.Equal(s.T(), expected, out)
+}
+
+func (s *DryRunGoMigrationSuite) TestUpGoMigrationErrorFailsDryRun() {
+	boom := errors.New("boom")
+	clicko.RegisterNamedMigration("00001_broken.go",
+		func(ctx context.Context, conn clickhouse.Conn) error {
+			if err := conn.Exec(ctx, "CREATE TABLE t (id UInt64) ENGINE = MergeTree() ORDER BY id"); err != nil {
+				return err
+			}
+			return boom
+		},
+		nil,
+	)
+
+	m := clicko.NewMigrator(nil, clicko.NewGoLoader(), &mock.MockStore{})
+	m.SetDryRun(true)
+
+	var err error
+	out := captureStdout(s.T(), func() {
+		err = m.Up(context.Background())
+	})
+
+	require.ErrorIs(s.T(), err, boom)
+	assert.Contains(s.T(), out, "-- dry-run error: boom")
+	assert.Contains(s.T(), out, "CREATE TABLE t", "statements captured before the failure must still be shown")
+}
+
+func (s *DryRunGoMigrationSuite) TestUpToleratesNoDataReads() {
+	clicko.RegisterNamedMigration("00001_data_dependent.go",
+		func(ctx context.Context, conn clickhouse.Conn) error {
+			var n uint64
+			if err := conn.QueryRow(ctx, "SELECT count() FROM users").Scan(&n); err != nil {
+				return fmt.Errorf("read count: %w", err)
+			}
+			return nil
+		},
+		nil,
+	)
+
+	m := clicko.NewMigrator(nil, clicko.NewGoLoader(), &mock.MockStore{})
+	m.SetDryRun(true)
+
+	var err error
+	out := captureStdout(s.T(), func() {
+		err = m.Up(context.Background())
+	})
+
+	require.NoError(s.T(), err, "reading data dry-run can't provide is an inherent limitation, not a failure")
+	assert.Contains(s.T(), out, "SELECT count() FROM users")
+	assert.Contains(s.T(), out, "-- dry-run error:")
 }
 
 func captureStdout(t *testing.T, fn func()) string {

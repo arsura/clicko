@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -57,27 +58,41 @@ func (c *UpToCmd) Run(globals *CLI) error {
 }
 
 func (c *DownCmd) Run(globals *CLI) error {
+	warnInertFlags(globals, "down")
 	return run(globals, func(ctx context.Context, m *clicko.Migrator) error {
 		return m.Down(ctx)
 	})
 }
 
 func (c *DownToCmd) Run(globals *CLI) error {
+	warnInertFlags(globals, "down-to")
 	return run(globals, func(ctx context.Context, m *clicko.Migrator) error {
 		return m.DownTo(ctx, c.Version)
 	})
 }
 
 func (c *ResetCmd) Run(globals *CLI) error {
+	warnInertFlags(globals, "reset")
 	return run(globals, func(ctx context.Context, m *clicko.Migrator) error {
 		return m.Reset(ctx)
 	})
 }
 
 func (c *StatusCmd) Run(globals *CLI) error {
+	warnInertFlags(globals, "status")
 	return run(globals, func(ctx context.Context, m *clicko.Migrator) error {
 		return m.Status(ctx)
 	})
+}
+
+// warnInertFlags warns when a global flag is set on a command it cannot affect.
+func warnInertFlags(globals *CLI, cmd string) {
+	if globals.AllowOutOfOrder {
+		log.Printf("Warning: --allow-out-of-order has no effect on %q", cmd)
+	}
+	if globals.DryRun && cmd == "status" {
+		log.Printf("Warning: --dry-run has no effect on %q (status never writes)", cmd)
+	}
 }
 
 func run(globals *CLI, fn func(context.Context, *clicko.Migrator) error) error {

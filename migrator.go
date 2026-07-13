@@ -2,6 +2,7 @@ package clicko
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"slices"
@@ -74,7 +75,9 @@ func (m *Migrator) up(ctx context.Context, target uint64) error {
 		}
 
 		if m.dryRun {
-			m.printMigrationSQL(ctx, migration, MigrationDirectionUp)
+			if err := m.printMigrationSQL(ctx, migration, MigrationDirectionUp); err != nil {
+				return err
+			}
 		} else {
 			log.Printf("Applying migration %d: %s", migration.Version, migration.Description)
 			start := time.Now()
@@ -164,10 +167,13 @@ func (m *Migrator) dryRunAppliedVersions(ctx context.Context) (map[uint64]*Migra
 
 // printMigrationSQL prints the SQL a migration would execute in the given
 // direction. Go migrations run against a no-op connection that captures
-// every Exec/Query call, so dynamically-built SQL is shown in its final form.
-func (m *Migrator) printMigrationSQL(ctx context.Context, migration *Migration, direction string) {
+// every Exec/Query call, so dynamically-built SQL is shown in its final
+// form. A Go migration error fails the dry-run — except errDryRunNoData,
+// which only means the function read data dry-run can't provide.
+func (m *Migrator) printMigrationSQL(ctx context.Context, migration *Migration, direction string) error {
 	fmt.Printf("=== Version %d: %s (%s) ===\n", migration.Version, migration.Description, migration.Source.Type)
 
+	var failure error
 	switch migration.Source.Type {
 	case MigrationSourceTypeSQL:
 		var sql string
@@ -189,6 +195,9 @@ func (m *Migrator) printMigrationSQL(ctx context.Context, migration *Migration, 
 			fmt.Println("-- no function defined")
 		} else if err := fn(ctx, dc); err != nil {
 			fmt.Printf("-- dry-run error: %v\n", err)
+			if !errors.Is(err, errDryRunNoData) {
+				failure = err
+			}
 		}
 		for i, stmt := range dc.statements {
 			if i > 0 {
@@ -199,6 +208,11 @@ func (m *Migrator) printMigrationSQL(ctx context.Context, migration *Migration, 
 	}
 
 	fmt.Println()
+
+	if failure != nil {
+		return fmt.Errorf("dry-run of migration %d failed: %w", migration.Version, failure)
+	}
+	return nil
 }
 
 // applyUp executes the up direction of a migration and records it as applied.
@@ -241,7 +255,12 @@ func (m *Migrator) Down(ctx context.Context) error {
 // down is the shared implementation for Down and DownTo. target=0 means no
 // lower bound; limit=0 means no limit on how many to revert.
 func (m *Migrator) down(ctx context.Context, target uint64, limit int) error {
-	migrations, applied, err := m.loadState(ctx)
+	migrations, err := m.loader.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load migrations: %w", err)
+	}
+
+	applied, err := m.downAppliedVersions(ctx)
 	if err != nil {
 		return err
 	}
@@ -270,7 +289,9 @@ func (m *Migrator) down(ctx context.Context, target uint64, limit int) error {
 		}
 
 		if m.dryRun {
-			m.printMigrationSQL(ctx, migration, MigrationDirectionDown)
+			if err := m.printMigrationSQL(ctx, migration, MigrationDirectionDown); err != nil {
+				return err
+			}
 		} else {
 			log.Printf("Reverting migration %d: %s", migration.Version, migration.Description)
 			start := time.Now()
@@ -293,6 +314,26 @@ func (m *Migrator) down(ctx context.Context, target uint64, limit int) error {
 	}
 
 	return nil
+}
+
+// downAppliedVersions reads applied state without creating the tracking
+// table: a rollback with no table has nothing to revert. When the table
+// exists, EnsureTable still runs so a replica missing it is repaired before
+// any ON CLUSTER delete.
+func (m *Migrator) downAppliedVersions(ctx context.Context) (map[uint64]*Migration, error) {
+	if m.dryRun {
+		return m.dryRunAppliedVersions(ctx)
+	}
+
+	exists, err := m.store.TableExists(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check migration table: %w", err)
+	}
+	if !exists {
+		return make(map[uint64]*Migration), nil
+	}
+
+	return m.loadAppliedVersions(ctx)
 }
 
 // applyDown executes the down direction of a migration and removes it from the store.

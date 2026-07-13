@@ -246,6 +246,34 @@ func (s *SQLLoaderSuite) TestErrorCommentOnlyDownFile() {
 	assert.ErrorContains(s.T(), err, `migration file "00001_create_users.down.sql" is empty`)
 }
 
+func (s *SQLLoaderSuite) TestErrorSemicolonOnlyDownFile() {
+	loader := clicko.NewSQLLoader(testdataDir + "/err_semicolon_only_down_file")
+
+	_, err := loader.Load()
+	assert.ErrorContains(s.T(), err, `migration file "00001_create_users.down.sql" is empty`)
+}
+
+func (s *SQLLoaderSuite) TestDanglingSymlinkIgnored() {
+	dir := s.T().TempDir()
+	require.NoError(s.T(), os.WriteFile(
+		filepath.Join(dir, "00001_create_users.up.sql"),
+		[]byte("CREATE TABLE users (id UInt64) ENGINE = MergeTree() ORDER BY id;\n"),
+		0o644,
+	))
+	// An editor lockfile is a dangling symlink whose name still ends in .sql.
+	require.NoError(s.T(), os.Symlink(
+		filepath.Join(dir, "does_not_exist"),
+		filepath.Join(dir, ".#00001_create_users.up.sql"),
+	))
+
+	loader := clicko.NewSQLLoader(dir)
+
+	got, err := loader.Load()
+	require.NoError(s.T(), err)
+	require.Len(s.T(), got, 1)
+	assert.Equal(s.T(), uint64(1), got[0].Version)
+}
+
 func (s *SQLLoaderSuite) TestErrorDownOnly() {
 	loader := clicko.NewSQLLoader(testdataDir + "/err_down_only")
 

@@ -396,3 +396,11 @@ func (s *CLIStandaloneSuite) TestInvalidInsertQuorum() {
 		"invalid store config: invalid insert quorum \"abc\": must be a positive integer (>= 1) or \"auto\"\n",
 		out)
 }
+
+func (s *CLIStandaloneSuite) TestDownOnFreshDatabaseCreatesNothing() {
+	out, err := runCLI(s.binaryPath, standaloneArgs(s.testDBURI, s.migrationsDir, "down")...)
+	require.NoError(s.T(), err, "cli output: %s", out)
+	require.Equal(s.T(), "No migrations to revert\n", normalizeOutput(out))
+
+	assertTableNotExists(s.T(), s.conn, s.testDBName, testStandaloneMigrationTable)
+}

@@ -1,7 +1,9 @@
 package clicko
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -68,6 +70,10 @@ func (l *sqlLoader) Load() ([]*Migration, error) {
 		// (file.IsDir() alone would report false for it).
 		stat, err := os.Stat(filepath.Join(l.dir, name))
 		if err != nil {
+			// Dangling symlink (e.g. an editor lockfile): skip, don't fail the load.
+			if file.Type()&fs.ModeSymlink != 0 && errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
 			return nil, fmt.Errorf("failed to stat %q: %w", name, err)
 		}
 		if stat.IsDir() {
@@ -107,7 +113,7 @@ func (l *sqlLoader) Load() ([]*Migration, error) {
 		}
 
 		if isEffectivelyEmptySQL(string(content)) {
-			return nil, fmt.Errorf("migration file %q is empty (or contains only SQL comments, which is not a valid no-op — ClickHouse rejects a comment-only query)", name)
+			return nil, fmt.Errorf("migration file %q is empty (or contains only SQL comments/semicolons, which is not a valid no-op — ClickHouse rejects an empty query)", name)
 		}
 
 		switch info.direction {
@@ -182,12 +188,14 @@ var (
 )
 
 // isEffectivelyEmptySQL reports whether content has no executable statement
-// once comments are stripped. Without this, a .down.sql containing only
-// "-- noop" would pass a plain TrimSpace check and fail server-side with
-// ClickHouse's "Empty query" error mid-rollback instead of at load time.
+// once comments and bare semicolons are stripped. Without this, a .down.sql
+// containing only "-- noop" or ";" would pass a plain TrimSpace check and
+// fail server-side with ClickHouse's "Empty query" error mid-rollback
+// instead of at load time.
 func isEffectivelyEmptySQL(content string) bool {
 	s := blockCommentRegex.ReplaceAllString(content, "")
 	s = lineCommentRegex.ReplaceAllString(s, "")
+	s = strings.ReplaceAll(s, ";", "")
 	return strings.TrimSpace(s) == ""
 }
 

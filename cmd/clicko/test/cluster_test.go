@@ -422,3 +422,22 @@ func (s *CLIClusterSuite) TestInvalidMigrationsDir() {
 		"failed to load migrations: failed to read migrations directory \"/nonexistent/path\": open /nonexistent/path: no such file or directory\n",
 		out)
 }
+
+func (s *CLIClusterSuite) TestUpQuorumExceedingReplicasFailsBeforeApplying() {
+	out, err := runCLI(s.binaryPath,
+		"up",
+		"--uri", s.testDBURI,
+		"--dir", s.migrationsDir,
+		"--cluster", migrationCluster,
+		"--insert-quorum", "9",
+		"--engine", customEngine,
+		"--table", testClusterMigrationTable,
+	)
+	require.Error(s.T(), err)
+	require.Contains(s.T(), out, `insert quorum 9 exceeds the 4 replica(s) of cluster "migration"`)
+
+	// Nothing may have been applied or created: the whole point is failing
+	// before the execute-then-record gap, not inside it.
+	assertTableNotExists(s.T(), s.conn, s.testDBName, testClusterMigrationTable)
+	assertTableNotExists(s.T(), s.conn, s.testDBName, "cluster_table")
+}

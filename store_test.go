@@ -94,6 +94,18 @@ func TestNewStore_ValidatesConfigValid(t *testing.T) {
 			name:   "custom engine whose name embeds a managed keyword is valid",
 			config: StoreConfig{CustomEngine: "MySettingsMergeTree()"},
 		},
+		{
+			name:   "custom engine with double hyphen inside quoted path is valid",
+			config: StoreConfig{CustomEngine: "ReplicatedMergeTree('/clickhouse/staging--eu/{database}/{table}', '{replica}')"},
+		},
+		{
+			name:   "custom engine with managed keywords inside quoted path is valid",
+			config: StoreConfig{CustomEngine: "ReplicatedMergeTree('/clickhouse/settings/order by/{table}', '{replica}')"},
+		},
+		{
+			name:   "custom engine with escaped quote inside quoted path is valid",
+			config: StoreConfig{CustomEngine: "ReplicatedMergeTree('/clickhouse/it''s--fine', '{replica}')"},
+		},
 		// --- InsertQuorum ---
 		{
 			name:   "numeric insert quorum with cluster is valid",
@@ -258,6 +270,21 @@ func TestNewStore_ValidatesConfigInvalid(t *testing.T) {
 		{
 			name:        "custom engine with newline-separated primary key clause is rejected",
 			config:      StoreConfig{CustomEngine: "MergeTree() PRIMARY\nKEY version"},
+			errContains: "invalid custom engine",
+		},
+		{
+			name:        "custom engine with unterminated quote is rejected",
+			config:      StoreConfig{CustomEngine: "MergeTree('abc"},
+			errContains: "unterminated single-quoted string",
+		},
+		{
+			name:        "custom engine with comment after quoted string is rejected",
+			config:      StoreConfig{CustomEngine: "ReplicatedMergeTree('/x', '{replica}') -- drop"},
+			errContains: "invalid custom engine",
+		},
+		{
+			name:        "custom engine with terminator between quoted strings is rejected",
+			config:      StoreConfig{CustomEngine: "MergeTree('a'); DROP TABLE ('b')"},
 			errContains: "invalid custom engine",
 		},
 		// --- InsertQuorum ---

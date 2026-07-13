@@ -111,23 +111,61 @@ func (c StoreConfig) validate() error {
 }
 
 // validateCustomEngine rejects an engine that could break out of the DDL or
-// duplicate a clause clicko manages itself.
+// duplicate a clause clicko manages itself. Single-quoted arguments (e.g.
+// ZooKeeper paths) are masked first so their content can't false-positive.
 func (c StoreConfig) validateCustomEngine() error {
 	if c.CustomEngine == "" {
 		return nil
 	}
 
-	if strings.Contains(c.CustomEngine, ";") || strings.Contains(c.CustomEngine, "--") || strings.Contains(c.CustomEngine, "/*") {
-		return fmt.Errorf("invalid custom engine %q: must not contain statement terminators (\";\") or comment sequences (\"--\", \"/*\")", c.CustomEngine)
+	masked, err := maskQuotedSpans(c.CustomEngine)
+	if err != nil {
+		return fmt.Errorf("invalid custom engine %q: %w", c.CustomEngine, err)
+	}
+
+	if strings.Contains(masked, ";") || strings.Contains(masked, "--") || strings.Contains(masked, "/*") {
+		return fmt.Errorf("invalid custom engine %q: must not contain statement terminators (\";\") or comment sequences (\"--\", \"/*\") outside quoted strings", c.CustomEngine)
 	}
 
 	for _, clause := range managedEngineClauses {
-		if clause.re.MatchString(c.CustomEngine) {
+		if clause.re.MatchString(masked) {
 			return fmt.Errorf("invalid custom engine %q: must contain only the engine expression; the %q clause is managed by clicko and must not be included", c.CustomEngine, clause.name)
 		}
 	}
 
 	return nil
+}
+
+// maskQuotedSpans removes the content of single-quoted strings, handling ''
+// and backslash escapes. Errors on an unterminated quote.
+func maskQuotedSpans(s string) (string, error) {
+	var b strings.Builder
+	inQuote := false
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if !inQuote {
+			b.WriteByte(ch)
+			if ch == '\'' {
+				inQuote = true
+			}
+			continue
+		}
+		switch ch {
+		case '\\':
+			i++
+		case '\'':
+			if i+1 < len(s) && s[i+1] == '\'' {
+				i++
+			} else {
+				inQuote = false
+				b.WriteByte(ch)
+			}
+		}
+	}
+	if inQuote {
+		return "", fmt.Errorf("unterminated single-quoted string")
+	}
+	return b.String(), nil
 }
 
 // validateInsertQuorum requires a positive integer or "auto", and only
@@ -201,6 +239,9 @@ func NewStore(conn clickhouse.Conn, config StoreConfig) (Store, error) {
 // responds, which would break every command if a replica is unreachable even
 // when the table already exists everywhere.
 func (s *store) EnsureTable(ctx context.Context) error {
+	if err := s.checkQuorumSatisfiable(ctx); err != nil {
+		return err
+	}
 	exists, err := s.TableExistsEverywhere(ctx)
 	if err != nil {
 		return err
@@ -209,6 +250,30 @@ func (s *store) EnsureTable(ctx context.Context) error {
 		return nil
 	}
 	return s.conn.Exec(ctx, s.GetCreateTableDDL())
+}
+
+// checkQuorumSatisfiable rejects a numeric quorum larger than the cluster's
+// replica count: every migration would execute but fail to be recorded.
+func (s *store) checkQuorumSatisfiable(ctx context.Context) error {
+	if !s.config.IsCluster() || s.config.InsertQuorum == "" || s.config.InsertQuorum == "auto" {
+		return nil
+	}
+
+	quorum, err := strconv.ParseUint(s.config.InsertQuorum, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid insert quorum %q: %w", s.config.InsertQuorum, err)
+	}
+
+	var replicas uint64
+	query := "SELECT count() FROM system.clusters WHERE cluster = ?"
+	if err := s.conn.QueryRow(ctx, query, s.config.Cluster).Scan(&replicas); err != nil {
+		return fmt.Errorf("failed to count replicas of cluster %q: %w", s.config.Cluster, err)
+	}
+
+	if quorum > replicas {
+		return fmt.Errorf("insert quorum %d exceeds the %d replica(s) of cluster %q: migrations would execute but never be recorded as applied — lower the quorum or use \"auto\"", quorum, replicas, s.config.Cluster)
+	}
+	return nil
 }
 
 // TableExistsEverywhere reports whether the tracking table exists on every

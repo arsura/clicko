@@ -150,6 +150,24 @@ func (s *MigratorSuite) TestLoaderErrorSkipsEnsureTable() {
 	assert.Zero(s.T(), store.EnsureTableCalls, "a command that fails at load time must not write to the database")
 }
 
+func (s *MigratorSuite) TestUpEnsuresTrackingTable() {
+	loader := &mock.MockLoader{Migrations: []*clicko.Migration{mock.NoopMigration(1, "first")}}
+	store := &mock.MockStore{}
+
+	m := clicko.NewMigrator(nil, loader, store)
+	require.NoError(s.T(), m.Up(context.Background()))
+	assert.Equal(s.T(), 1, store.EnsureTableCalls)
+}
+
+func (s *MigratorSuite) TestDownWithoutTrackingTableDoesNotCreateIt() {
+	loader := &mock.MockLoader{Migrations: []*clicko.Migration{mock.NoopMigration(1, "first")}}
+	store := &mock.MockStore{TableMissing: true}
+
+	m := clicko.NewMigrator(nil, loader, store)
+	require.NoError(s.T(), m.Down(context.Background()))
+	assert.Zero(s.T(), store.EnsureTableCalls, "a rollback with no tracking table has nothing to revert and must not create it")
+}
+
 func (s *MigratorSuite) TestUpToBelowOutOfOrderVersionReturnsNil() {
 	loader := &mock.MockLoader{Migrations: []*clicko.Migration{
 		mock.NoopMigration(1, "first"),
