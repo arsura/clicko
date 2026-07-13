@@ -38,7 +38,8 @@ type MigrationSource struct {
 
 // HasDown reports whether this migration source has a down (rollback) definition.
 // Migrations without a down definition are treated as forward-only: rollback
-// operations stop when they reach one, leaving it and everything below applied.
+// operations skip over them — leaving them recorded as applied — and keep
+// reverting the migrations underneath.
 func (s MigrationSource) HasDown() bool {
 	switch s.Type {
 	case MigrationSourceTypeGo:

@@ -2,6 +2,7 @@ package clicko_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/arsura/clicko"
@@ -131,6 +132,22 @@ func (s *MigratorSuite) TestDownDoesNotMutateLoaderSlice() {
 
 	assert.Equal(s.T(), []*clicko.Migration{first, second}, loader.Migrations,
 		"down must not reorder the slice owned by the loader")
+}
+
+func (s *MigratorSuite) TestLoaderErrorSkipsEnsureTable() {
+	loader := &mock.MockLoader{Err: errors.New("bad migrations dir")}
+	store := &mock.MockStore{}
+
+	m := clicko.NewMigrator(nil, loader, store)
+
+	err := m.Up(context.Background())
+	require.Error(s.T(), err)
+	assert.Contains(s.T(), err.Error(), "bad migrations dir")
+
+	err = m.Down(context.Background())
+	require.Error(s.T(), err)
+
+	assert.Zero(s.T(), store.EnsureTableCalls, "a command that fails at load time must not write to the database")
 }
 
 func (s *MigratorSuite) TestUpToBelowOutOfOrderVersionReturnsNil() {
