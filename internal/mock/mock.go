@@ -18,9 +18,14 @@ type MockStore struct {
 	// node has the table but another replica does not: TableExistsEverywhere
 	// returns false while TableExists stays true.
 	TableMissingOnSomeReplicas bool
+	// EnsureTableCalls counts EnsureTable invocations.
+	EnsureTableCalls int
 }
 
-func (s *MockStore) EnsureTable(_ context.Context) error { return nil }
+func (s *MockStore) EnsureTable(_ context.Context) error {
+	s.EnsureTableCalls++
+	return nil
+}
 func (s *MockStore) TableExists(_ context.Context) (bool, error) {
 	return !s.TableMissing, nil
 }
@@ -42,12 +47,16 @@ func (s *MockStore) GetAppliedVersions(_ context.Context) (map[uint64]*clicko.Mi
 func (s *MockStore) Add(_ context.Context, _ uint64, _ string) error { return nil }
 func (s *MockStore) Remove(_ context.Context, _ uint64) error        { return nil }
 
-// MockLoader is a Loader that returns a fixed list of migrations.
+// MockLoader is a Loader that returns a fixed list of migrations, or Err if set.
 type MockLoader struct {
 	Migrations []*clicko.Migration
+	Err        error
 }
 
 func (l *MockLoader) Load() ([]*clicko.Migration, error) {
+	if l.Err != nil {
+		return nil, l.Err
+	}
 	return l.Migrations, nil
 }
 

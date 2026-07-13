@@ -98,14 +98,14 @@ func (m *Migrator) up(ctx context.Context, target uint64) error {
 // loadState returns all known migrations from the loader alongside a map of
 // already-applied versions keyed by version number.
 func (m *Migrator) loadState(ctx context.Context) ([]*Migration, map[uint64]*Migration, error) {
-	applied, err := m.loadAppliedVersions(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
 	migrations, err := m.loader.Load()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load migrations: %w", err)
+	}
+
+	applied, err := m.loadAppliedVersions(ctx)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	return migrations, applied, nil
