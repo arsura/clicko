@@ -56,7 +56,7 @@ func (m *Migrator) up(ctx context.Context, target uint64) error {
 		return err
 	}
 
-	err = m.checkOutOfOrder(migrations, applied)
+	err = m.checkOutOfOrder(migrations, applied, target)
 	if err != nil {
 		return err
 	}
@@ -345,10 +345,10 @@ func warnUnknownTarget(migrations []*Migration, target uint64) {
 	}
 }
 
-// checkOutOfOrder detects pending migrations with a version lower than the
-// highest applied one. Errors listing every offender unless allowOutOfOrder
-// is set, in which case it warns instead.
-func (m *Migrator) checkOutOfOrder(migrations []*Migration, applied map[uint64]*Migration) error {
+// checkOutOfOrder detects pending migrations, up to target (0 = no bound),
+// with a version lower than the highest applied one. Errors listing every
+// offender unless allowOutOfOrder is set, in which case it warns instead.
+func (m *Migrator) checkOutOfOrder(migrations []*Migration, applied map[uint64]*Migration, target uint64) error {
 	if len(applied) == 0 {
 		return nil
 	}
@@ -364,6 +364,9 @@ func (m *Migrator) checkOutOfOrder(migrations []*Migration, applied map[uint64]*
 	for _, migration := range migrations {
 		if _, ok := applied[migration.Version]; ok {
 			continue
+		}
+		if target > 0 && migration.Version > target {
+			break
 		}
 		if migration.Version < maxApplied {
 			outOfOrder = append(outOfOrder, migration.Version)
