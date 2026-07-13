@@ -239,6 +239,13 @@ func (s *SQLLoaderSuite) TestErrorEmptyDownFile() {
 	assert.ErrorContains(s.T(), err, `migration file "00001_create_users.down.sql" is empty`)
 }
 
+func (s *SQLLoaderSuite) TestErrorCommentOnlyDownFile() {
+	loader := clicko.NewSQLLoader(testdataDir + "/err_comment_only_down_file")
+
+	_, err := loader.Load()
+	assert.ErrorContains(s.T(), err, `migration file "00001_create_users.down.sql" is empty`)
+}
+
 func (s *SQLLoaderSuite) TestErrorDownOnly() {
 	loader := clicko.NewSQLLoader(testdataDir + "/err_down_only")
 

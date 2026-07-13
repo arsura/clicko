@@ -46,7 +46,7 @@ migrator, err := clicko.New(conn, clicko.StoreConfig{
     TableName:    "migration_versions",
     Cluster:      "migration",
     CustomEngine: "ReplicatedMergeTree('/clickhouse/migration/table/all/{database}/{table}', '{replica}')",
-    InsertQuorum: "2",
+    InsertQuorum: "4",
 })
 ```
 

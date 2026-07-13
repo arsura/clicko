@@ -79,13 +79,16 @@ Commands:
     Apply migrations up to a specific version.
 
   down --uri=STRING [flags]
-    Rollback the last applied migration.
+    Rollback the last applied migration (skips forward-only migrations, leaving
+    them applied).
 
   down-to --uri=STRING <version> [flags]
-    Rollback migrations down to a specific version.
+    Rollback migrations down to a specific version (skips forward-only
+    migrations, leaving them applied).
 
   reset --uri=STRING [flags]
-    Rollback all applied migrations.
+    Rollback all applied migrations (skips forward-only migrations, leaving them
+    applied).
 
   status --uri=STRING [flags]
     Show migration status.
@@ -113,7 +116,8 @@ Arguments:
 // downToCmdUsage is the help text shown for the "down-to" command.
 const downToCmdUsage = `Usage: clicko down-to --uri=STRING <version> [flags]
 
-Rollback migrations down to a specific version.
+Rollback migrations down to a specific version (skips forward-only migrations,
+leaving them applied).
 
 Arguments:
   <version>    Target version.

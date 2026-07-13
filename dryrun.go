@@ -66,10 +66,9 @@ func (c *dryRunConn) ServerVersion() (*driver.ServerVersion, error) {
 	return &driver.ServerVersion{}, nil
 }
 
-// emptyRows implements driver.Rows returning no data.
-// Query/Select calls in dry-run mode return this so the migration
-// function can proceed without panicking, though any logic depending
-// on query results will see zero rows.
+// emptyRows implements driver.Rows returning no data, so a Query/Select call
+// in dry-run mode can proceed without panicking (any logic depending on
+// results will just see zero rows).
 type emptyRows struct{}
 
 var _ driver.Rows = (*emptyRows)(nil)
@@ -84,10 +83,9 @@ func (r *emptyRows) Columns() []string                { return nil }
 func (r *emptyRows) Close() error                     { return nil }
 func (r *emptyRows) Err() error                       { return nil }
 
-// dryRunBatch implements driver.Batch as a no-op so that migration functions
-// using PrepareBatch can proceed in dry-run mode without panicking. Appended
-// rows are discarded; the INSERT statement itself is already captured by
-// PrepareBatch.
+// dryRunBatch implements driver.Batch as a no-op so PrepareBatch callers can
+// proceed in dry-run mode; appended rows are discarded (the INSERT statement
+// itself is already captured by PrepareBatch).
 type dryRunBatch struct{}
 
 var _ driver.Batch = (*dryRunBatch)(nil)

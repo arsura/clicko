@@ -37,11 +37,9 @@ func (m *Migrator) SetDryRun(enabled bool) {
 	m.dryRun = enabled
 }
 
-// SetAllowOutOfOrder controls whether out-of-order migrations are permitted.
-// By default this is false: if a pending migration has a lower version number
-// than the highest already-applied version, Up and UpTo return an error.
-// Enable this flag only when you are certain the migration is independent of
-// any previously applied version.
+// SetAllowOutOfOrder allows a pending migration with a lower version than
+// the highest applied one to run instead of erroring. Off by default; enable
+// only when the migration is independent of anything already applied.
 func (m *Migrator) SetAllowOutOfOrder(enabled bool) {
 	m.allowOutOfOrder = enabled
 }
@@ -51,8 +49,7 @@ func (m *Migrator) Up(ctx context.Context) error {
 	return m.up(ctx, 0)
 }
 
-// up is the shared implementation for Up and UpTo.
-// target=0 means apply all pending migrations without an upper bound.
+// up is the shared implementation for Up and UpTo. target=0 means no upper bound.
 func (m *Migrator) up(ctx context.Context, target uint64) error {
 	migrations, applied, err := m.loadState(ctx)
 	if err != nil {
@@ -114,9 +111,9 @@ func (m *Migrator) loadState(ctx context.Context) ([]*Migration, map[uint64]*Mig
 	return migrations, applied, nil
 }
 
-// loadAppliedVersions creates the tracking table if missing, then reads the
-// applied migrations from it. Dry-run mode must not write to the server, so it
-// delegates to dryRunAppliedVersions instead.
+// loadAppliedVersions creates the tracking table if missing, then reads
+// applied migrations. Dry-run must not write, so it delegates to
+// dryRunAppliedVersions instead.
 func (m *Migrator) loadAppliedVersions(ctx context.Context) (map[uint64]*Migration, error) {
 	if m.dryRun {
 		return m.dryRunAppliedVersions(ctx)
@@ -134,14 +131,9 @@ func (m *Migrator) loadAppliedVersions(ctx context.Context) (map[uint64]*Migrati
 	return applied, nil
 }
 
-// dryRunAppliedVersions is the read-only variant of loadAppliedVersions:
-// instead of creating the tracking table it checks for its existence. The two
-// checks answer different questions, mirroring what an apply would do: the
-// CREATE TABLE DDL is previewed whenever apply would execute it (table missing
-// on any replica), while applied state is read whenever the connected node has
-// the table — so a table that exists locally but not cluster-wide still gets
-// its applied migrations skipped in the preview instead of being shown as
-// pending. Only when the connected node has no table is everything pending.
+// dryRunAppliedVersions is the read-only variant of loadAppliedVersions: it
+// checks table existence instead of creating it, and previews the CREATE DDL
+// whenever an apply would actually run it (table missing on any replica).
 func (m *Migrator) dryRunAppliedVersions(ctx context.Context) (map[uint64]*Migration, error) {
 	existsEverywhere, err := m.store.TableExistsEverywhere(ctx)
 	if err != nil {
@@ -171,9 +163,8 @@ func (m *Migrator) dryRunAppliedVersions(ctx context.Context) (map[uint64]*Migra
 }
 
 // printMigrationSQL prints the SQL a migration would execute in the given
-// direction. For Go migrations the function is invoked against a no-op
-// connection that captures every Exec/Query call, so dynamically-built SQL
-// is shown in its final form.
+// direction. Go migrations run against a no-op connection that captures
+// every Exec/Query call, so dynamically-built SQL is shown in its final form.
 func (m *Migrator) printMigrationSQL(ctx context.Context, migration *Migration, direction string) {
 	fmt.Printf("=== Version %d: %s (%s) ===\n", migration.Version, migration.Description, migration.Source.Type)
 
@@ -210,7 +201,7 @@ func (m *Migrator) printMigrationSQL(ctx context.Context, migration *Migration, 
 	fmt.Println()
 }
 
-// applyUp executes the up direction of a migration and records it as applied in the store.
+// applyUp executes the up direction of a migration and records it as applied.
 func (m *Migrator) applyUp(ctx context.Context, migration *Migration) error {
 	switch migration.Source.Type {
 	case MigrationSourceTypeGo:
@@ -232,9 +223,8 @@ func (m *Migrator) applyUp(ctx context.Context, migration *Migration) error {
 }
 
 // UpTo applies pending migrations up to and including the target version.
-// Target 0 is rejected: version 0 is reserved (the loader and registry refuse
-// it), and up uses 0 internally as the "no bound" sentinel, so a 0 target
-// would silently behave like Up instead of what was most likely a typo.
+// Target 0 is rejected: it's reserved, and up() uses 0 as its internal
+// "no bound" sentinel, so a 0 target would silently behave like Up.
 func (m *Migrator) UpTo(ctx context.Context, target uint64) error {
 	if target == 0 {
 		return fmt.Errorf("target version 0 is reserved (migration versions start at 1); to apply all pending migrations use \"up\" (CLI) or Up (Go)")
@@ -248,8 +238,8 @@ func (m *Migrator) Down(ctx context.Context) error {
 	return m.down(ctx, 0, 1)
 }
 
-// down is the shared implementation for Down and DownTo.
-// target=0 means no lower bound. limit=0 means no limit on how many to revert.
+// down is the shared implementation for Down and DownTo. target=0 means no
+// lower bound; limit=0 means no limit on how many to revert.
 func (m *Migrator) down(ctx context.Context, target uint64, limit int) error {
 	migrations, applied, err := m.loadState(ctx)
 	if err != nil {
@@ -263,20 +253,17 @@ func (m *Migrator) down(ctx context.Context, target uint64, limit int) error {
 
 	revertedCount := 0
 	for _, migration := range migrations {
-		// Skip versions that aren't applied.
 		if _, ok := applied[migration.Version]; !ok {
 			continue
 		}
 
-		// Migrations are now descending. Once we reach the target version
-		// (or below), stop — the target itself should remain applied.
+		// Descending order now; the target itself stays applied.
 		if target > 0 && migration.Version <= target {
 			break
 		}
 
-		// A forward-only migration cannot be unwound: there is no SQL/Go
-		// function to run for it. Leave it recorded as applied and move on to
-		// older migrations underneath, which are independent of it.
+		// No SQL/Go function to unwind a forward-only migration. Leave it
+		// applied and keep reverting the independent migrations underneath.
 		if !migration.Source.HasDown() {
 			log.Printf("Skipping migration %d: %s (forward-only, no down defined; left applied)", migration.Version, migration.Description)
 			continue
@@ -326,13 +313,10 @@ func (m *Migrator) applyDown(ctx context.Context, migration *Migration) error {
 	return m.store.Remove(ctx, migration.Version)
 }
 
-// DownTo reverts all applied migrations down to (but not including) the target
-// version. Forward-only migrations along the way are left applied and skipped;
-// everything below them is still reverted.
-// Target 0 is rejected: version 0 is reserved (the loader and registry refuse
-// it), and down uses 0 internally as the "no bound" sentinel, so a 0 target
-// would silently behave like Reset — the most destructive command — instead
-// of what was most likely a typo.
+// DownTo reverts applied migrations down to (but not including) the target
+// version, skipping forward-only migrations along the way. Target 0 is
+// rejected the same way as UpTo, since down() uses 0 as its "no bound"
+// sentinel and 0 would silently behave like Reset.
 func (m *Migrator) DownTo(ctx context.Context, target uint64) error {
 	if target == 0 {
 		return fmt.Errorf("target version 0 is reserved (migration versions start at 1); to revert all applied migrations use \"reset\" (CLI) or Reset (Go)")
@@ -340,18 +324,15 @@ func (m *Migrator) DownTo(ctx context.Context, target uint64) error {
 	return m.down(ctx, target, 0)
 }
 
-// Reset reverts all applied migrations. Forward-only migrations are left
-// applied and skipped; everything below them is still reverted.
+// Reset reverts all applied migrations, skipping forward-only migrations
+// along the way.
 func (m *Migrator) Reset(ctx context.Context) error {
 	return m.down(ctx, 0, 0)
 }
 
-// warnUnknownTarget logs a warning when an up-to/down-to target does not match
-// any known migration version. Stopping between versions is still honored —
-// the run proceeds with the target as a bound — but a typo'd version (e.g. a
-// timestamp one digit off) would otherwise silently apply or keep everything
-// below the bogus bound, so make it visible. target=0 is the internal
-// "no bound" sentinel used by Up/Down/Reset and is exempt.
+// warnUnknownTarget warns when an up-to/down-to target matches no known
+// migration — likely a typo (e.g. a mistyped timestamp) rather than an
+// intentional bound. target=0 is the internal sentinel and is exempt.
 func warnUnknownTarget(migrations []*Migration, target uint64) {
 	if target == 0 {
 		return
@@ -364,9 +345,9 @@ func warnUnknownTarget(migrations []*Migration, target uint64) {
 	}
 }
 
-// checkOutOfOrder detects pending migrations whose version is lower than the
-// highest already-applied version. When allowOutOfOrder is false it returns an
-// error listing every offending version; when true it logs a warning for each.
+// checkOutOfOrder detects pending migrations with a version lower than the
+// highest applied one. Errors listing every offender unless allowOutOfOrder
+// is set, in which case it warns instead.
 func (m *Migrator) checkOutOfOrder(migrations []*Migration, applied map[uint64]*Migration) error {
 	if len(applied) == 0 {
 		return nil
@@ -406,11 +387,9 @@ func (m *Migrator) checkOutOfOrder(migrations []*Migration, applied map[uint64]*
 	return nil
 }
 
-// Status prints a table showing each migration's version, description,
-// status, and when it was applied. It is read-only: unlike Up and Down it
-// never creates the tracking table, so it works with credentials that lack
-// DDL permissions and never modifies the server. When the tracking table
-// does not exist yet, every migration is reported as pending.
+// Status prints each migration's version, description, status, and applied
+// time. Read-only — never creates the tracking table — so it works with
+// credentials that lack DDL permissions.
 func (m *Migrator) Status(ctx context.Context) error {
 	applied, err := m.readAppliedVersions(ctx)
 	if err != nil {
@@ -438,12 +417,10 @@ func (m *Migrator) Status(ctx context.Context) error {
 	return nil
 }
 
-// readAppliedVersions reads the applied migrations without executing any DDL:
-// when the tracking table does not exist on the connected node it returns an
-// empty map, meaning every migration is treated as pending. The check is
-// deliberately local, not cluster-wide: rows on the connected node are
-// authoritative for what has been applied even if another replica is still
-// missing the table.
+// readAppliedVersions reads applied migrations without executing DDL: an
+// empty map (everything pending) if the tracking table doesn't exist on the
+// connected node. Deliberately local, not cluster-wide — rows here are
+// authoritative even if another replica is still missing the table.
 func (m *Migrator) readAppliedVersions(ctx context.Context) (map[uint64]*Migration, error) {
 	exists, err := m.store.TableExists(ctx)
 	if err != nil {

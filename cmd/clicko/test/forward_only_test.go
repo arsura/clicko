@@ -96,16 +96,10 @@ func (s *CLIForwardOnlySuite) TestResetSkipsForwardOnlyMigrations() {
 	})
 }
 
-// TestResetSkipsForwardOnlyAndRevertsBelow verifies that Reset() leaves a
-// forward-only migration applied but keeps reverting the migrations above and
-// below it: version 3 (has a down) is reverted, version 2 (forward-only) is
-// skipped and left applied, then version 1's down still runs and drops the
-// table underneath it. This intentionally leaves the tracking table
-// inconsistent with reality (version 2's "add email column" stays recorded
-// as applied even though the table it modified no longer exists) — accepted
-// as the operator's responsibility, same as editing/deleting migration files
-// (see IMPROVEMENT.md #5). Prefer forward-only migrations without a down
-// file in the first place, as the README recommends.
+// TestResetSkipsForwardOnlyAndRevertsBelow verifies Reset() reverts 3 and 1
+// but leaves forward-only version 2 applied — a known, accepted tracking
+// table inconsistency (version 2's table no longer exists but its record
+// stays "applied"); see IMPROVEMENT.md #5.
 func (s *CLIForwardOnlySuite) TestResetSkipsForwardOnlyAndRevertsBelow() {
 	out, err := runCLI(s.binaryPath, forwardOnlyArgs(s.testDBURI, s.mixedDir, "up")...)
 	require.NoError(s.T(), err, "up: %s", out)
