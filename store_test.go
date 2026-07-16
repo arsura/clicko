@@ -81,6 +81,22 @@ func TestNewStore_ValidatesConfigValid(t *testing.T) {
 			name:   "plain cluster name is valid",
 			config: StoreConfig{Cluster: "my_cluster"},
 		},
+		{
+			name:   "cluster name with hyphens is valid",
+			config: StoreConfig{Cluster: "all-replicated"},
+		},
+		{
+			name:   "cluster name with dots is valid",
+			config: StoreConfig{Cluster: "prod.eu-west"},
+		},
+		{
+			name:   "cluster macro is valid",
+			config: StoreConfig{Cluster: "{cluster}"},
+		},
+		{
+			name:   "cluster name mixing a macro and literals is valid",
+			config: StoreConfig{Cluster: "{cluster}-backup"},
+		},
 		// --- CustomEngine ---
 		{
 			name:   "empty custom engine is valid",
@@ -205,13 +221,38 @@ func TestNewStore_ValidatesConfigInvalid(t *testing.T) {
 			errContains: "invalid cluster name",
 		},
 		{
-			name:        "cluster name with a dot is rejected",
-			config:      StoreConfig{Cluster: "my.cluster"},
+			name:        "cluster name starting with a hyphen is rejected",
+			config:      StoreConfig{Cluster: "-cluster"},
 			errContains: "invalid cluster name",
 		},
 		{
-			name:        "cluster name with a hyphen is rejected",
-			config:      StoreConfig{Cluster: "my-cluster"},
+			name:        "cluster name starting with a dot is rejected",
+			config:      StoreConfig{Cluster: ".cluster"},
+			errContains: "invalid cluster name",
+		},
+		{
+			name:        "cluster name with a space is rejected",
+			config:      StoreConfig{Cluster: "my cluster"},
+			errContains: "invalid cluster name",
+		},
+		{
+			name:        "cluster name with a backslash is rejected",
+			config:      StoreConfig{Cluster: `all\replicated`},
+			errContains: "invalid cluster name",
+		},
+		{
+			name:        "cluster name with an unclosed macro brace is rejected",
+			config:      StoreConfig{Cluster: "{cluster"},
+			errContains: "invalid cluster name",
+		},
+		{
+			name:        "cluster name with an empty macro is rejected",
+			config:      StoreConfig{Cluster: "{}"},
+			errContains: "invalid cluster name",
+		},
+		{
+			name:        "cluster macro with a space is rejected",
+			config:      StoreConfig{Cluster: "{my cluster}"},
 			errContains: "invalid cluster name",
 		},
 		// --- CustomEngine ---
