@@ -19,8 +19,10 @@ const (
 )
 
 var (
-	// identRegex matches a single unquoted ClickHouse identifier.
-	identRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	// clusterNameRegex matches a cluster name — an XML element name under
+	// remote_servers ("-"/"." allowed after the first character) — with
+	// optional {macro} segments, which the server expands after parsing.
+	clusterNameRegex = regexp.MustCompile(`^(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_])(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z0-9_.-])*$`)
 	// tableNameRegex matches a table name with an optional database qualifier (db.table).
 	tableNameRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$`)
 
@@ -74,8 +76,8 @@ func (c StoreConfig) quotedTableName() string {
 }
 
 // quoteIdent wraps an identifier in backticks, doubling any embedded
-// backtick. Defense-in-depth: Cluster is already restricted to a plain
-// identifier by validate().
+// backtick. Load-bearing for cluster names with "-" or "."; validate()
+// keeps backticks and backslashes out, so no further escaping is needed.
 func quoteIdent(name string) string {
 	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
 }
@@ -99,8 +101,8 @@ func (c StoreConfig) validate() error {
 		return fmt.Errorf("invalid table name %q: must be a plain identifier (letters, digits, underscores) with an optional database prefix, e.g. \"migrations\" or \"mydb.migrations\"", c.TableName)
 	}
 
-	if c.Cluster != "" && !identRegex.MatchString(c.Cluster) {
-		return fmt.Errorf("invalid cluster name %q: must be a plain identifier (letters, digits, underscores)", c.Cluster)
+	if c.Cluster != "" && !clusterNameRegex.MatchString(c.Cluster) {
+		return fmt.Errorf("invalid cluster name %q: must start with a letter or underscore, followed by letters, digits, underscores, hyphens, or dots, and may contain {macro} substitutions, e.g. \"all-replicated\" or \"{cluster}\"", c.Cluster)
 	}
 
 	if err := c.validateCustomEngine(); err != nil {
