@@ -98,11 +98,11 @@ func (c StoreConfig) ResolveEngine() string {
 // (e.g. TableName) already ran.
 func (c StoreConfig) validate() error {
 	if !tableNameRegex.MatchString(c.TableName) {
-		return fmt.Errorf("invalid table name %q: must be a plain identifier (letters, digits, underscores) with an optional database prefix, e.g. \"migrations\" or \"mydb.migrations\"", c.TableName)
+		return fmt.Errorf("invalid table name %q: only a-z, A-Z, 0-9, and _ are allowed (can't start with a digit), with one \".\" allowed to separate a database prefix, e.g. \"migrations\" or \"mydb.migrations\"", c.TableName)
 	}
 
 	if c.Cluster != "" && !clusterNameRegex.MatchString(c.Cluster) {
-		return fmt.Errorf("invalid cluster name %q: must start with a letter or underscore, followed by letters, digits, underscores, hyphens, or dots, and may contain {macro} substitutions, e.g. \"all-replicated\" or \"{cluster}\"", c.Cluster)
+		return fmt.Errorf("invalid cluster name %q: only a-z, A-Z, 0-9, _, -, and . are allowed (can't start with a digit, -, or .), and any part can be replaced with a {macro} like {cluster}, e.g. \"all-replicated\" or \"{cluster}\"", c.Cluster)
 	}
 
 	if err := c.validateCustomEngine(); err != nil {
