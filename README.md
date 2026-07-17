@@ -1,11 +1,13 @@
-<p align="center">
-  <img src="assets/clicko_no_smoking.png" alt="clicko no smoking" width="500" />
-</p>
+# clicko
+
+<img align="right" width="125" src="assets/clicko_no_smoking.png" alt="clicko">
 
 A ClickHouse migration tool built for self-hosted sharded clusters, inspired by [pressly/goose](https://github.com/pressly/goose). Works with ClickHouse Cloud too.
 
 [![Test](https://github.com/arsura/clicko/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/arsura/clicko/actions/workflows/test.yaml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/arsura/clicko.svg)](https://pkg.go.dev/github.com/arsura/clicko)
+
+<br clear="right">
 
 ## Features
 
