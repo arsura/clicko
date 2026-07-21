@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -21,11 +22,7 @@ type dryRunConn struct {
 }
 
 func (c *dryRunConn) capture(query string, args []any) {
-	s := strings.TrimSpace(query)
-	if len(args) > 0 {
-		s += fmt.Sprintf("\n-- args: %v", args)
-	}
-	c.statements = append(c.statements, s)
+	c.statements = append(c.statements, FormatDryRunStatement(query, args))
 }
 
 func (c *dryRunConn) Exec(_ context.Context, query string, args ...any) error {
@@ -120,3 +117,31 @@ type emptyRow struct{}
 func (r *emptyRow) Err() error             { return nil }
 func (r *emptyRow) Scan(_ ...any) error    { return errDryRunNoData }
 func (r *emptyRow) ScanStruct(_ any) error { return errDryRunNoData }
+
+// sensitiveSQLPattern matches SQL that likely embeds credentials. Dry-run omits
+// matching statements instead of printing them.
+var sensitiveSQLPattern = regexp.MustCompile(`(?i)\b(?:identified\s+by|aws_secret_access_key|secret_access_key|kafka_sasl_password|sasl_password|password)\s`)
+
+const dryRunOmittedStatement = "-- statement omitted (matched credential pattern)"
+
+// FormatDryRunSQL returns sql trimmed for dry-run output, or an omission marker
+// when the statement likely contains credentials.
+func FormatDryRunSQL(sql string) string {
+	if sensitiveSQLPattern.MatchString(sql) {
+		return dryRunOmittedStatement
+	}
+	return strings.TrimSpace(sql)
+}
+
+// FormatDryRunStatement formats a captured dry-run query and its bound args.
+func FormatDryRunStatement(query string, args []any) string {
+	if sensitiveSQLPattern.MatchString(query) {
+		return dryRunOmittedStatement
+	}
+	s := strings.TrimSpace(query)
+	if len(args) == 0 {
+		return s
+	}
+	s += fmt.Sprintf("\n-- args: %v", args)
+	return s
+}
