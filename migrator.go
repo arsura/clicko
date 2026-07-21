@@ -176,7 +176,7 @@ func (m *Migrator) printMigrationSQL(ctx context.Context, migration *Migration, 
 		} else {
 			sql = migration.Source.DownSQL
 		}
-		fmt.Println(strings.TrimSpace(sql))
+		fmt.Println(FormatDryRunSQL(sql))
 	case MigrationSourceTypeGo:
 		dc := &dryRunConn{}
 		var fn GoMigrationFunc

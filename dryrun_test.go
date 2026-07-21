@@ -145,6 +145,28 @@ func (s *DryRunGoMigrationSuite) TestUpCapturesSQLWithArgs() {
 	assert.Equal(s.T(), expected, out)
 }
 
+func (s *DryRunGoMigrationSuite) TestUpOmitsDictionaryPassword() {
+	clicko.RegisterNamedMigration("00001_create_dict.go",
+		func(ctx context.Context, conn clickhouse.Conn) error {
+			return conn.Exec(ctx, "CREATE DICTIONARY dict (id UInt64) PRIMARY KEY id SOURCE(MYSQL(HOST 'localhost' USER 'root' PASSWORD 'super-secret' DB 'test' TABLE 'users')) LAYOUT(HASHED()) LIFETIME(0)")
+		},
+		nil,
+	)
+
+	m := clicko.NewMigrator(nil, clicko.NewGoLoader(), &mock.MockStore{})
+	m.SetDryRun(true)
+
+	out := captureStdout(s.T(), func() {
+		err := m.Up(context.Background())
+		require.NoError(s.T(), err)
+	})
+
+	expected := "=== Version 1: create dict (go) ===\n" +
+		"-- statement omitted (matched credential pattern)\n\n"
+	assert.Equal(s.T(), expected, out)
+	assert.NotContains(s.T(), out, "super-secret")
+}
+
 func (s *DryRunGoMigrationSuite) TestUpDoesNotModifyState() {
 	clicko.RegisterNamedMigration("00001_create_users.go",
 		func(ctx context.Context, conn clickhouse.Conn) error {
@@ -165,4 +187,77 @@ func (s *DryRunGoMigrationSuite) TestUpDoesNotModifyState() {
 	applied, err := store.GetAppliedVersions(context.Background())
 	require.NoError(s.T(), err)
 	assert.Empty(s.T(), applied, "dry-run must not record any applied migration")
+}
+
+func TestFormatDryRunSQL(t *testing.T) {
+	t.Parallel()
+
+	const omitted = "-- statement omitted (matched credential pattern)"
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "dictionary mysql password omitted",
+			in:   "CREATE DICTIONARY dict (id UInt64) PRIMARY KEY id SOURCE(MYSQL(HOST 'localhost' USER 'root' PASSWORD 'super-secret' DB 'test' TABLE 'users')) LAYOUT(HASHED()) LIFETIME(0)",
+			want: omitted,
+		},
+		{
+			name: "identified by omitted",
+			in:   "CREATE USER bob IDENTIFIED BY 'topsecret'",
+			want: omitted,
+		},
+		{
+			name: "no credentials unchanged",
+			in:   "CREATE TABLE users (id UInt64) ENGINE = MergeTree() ORDER BY id",
+			want: "CREATE TABLE users (id UInt64) ENGINE = MergeTree() ORDER BY id",
+		},
+		{
+			name: "user_password column unchanged",
+			in:   "ALTER TABLE users ADD COLUMN user_password String",
+			want: "ALTER TABLE users ADD COLUMN user_password String",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, clicko.FormatDryRunSQL(tt.in))
+		})
+	}
+}
+
+func TestFormatDryRunStatement(t *testing.T) {
+	t.Parallel()
+
+	const omitted = "-- statement omitted (matched credential pattern)"
+
+	t.Run("inline password omitted", func(t *testing.T) {
+		t.Parallel()
+		got := clicko.FormatDryRunStatement(
+			"CREATE DICTIONARY dict (...) SOURCE(MYSQL(PASSWORD 'secret'))",
+			nil,
+		)
+		assert.Equal(t, omitted, got)
+	})
+
+	t.Run("parameterized password omitted", func(t *testing.T) {
+		t.Parallel()
+		got := clicko.FormatDryRunStatement(
+			"CREATE DICTIONARY dict (...) SOURCE(MYSQL(PASSWORD ?))",
+			[]any{"secret"},
+		)
+		assert.Equal(t, omitted, got)
+	})
+
+	t.Run("non-credential args unchanged", func(t *testing.T) {
+		t.Parallel()
+		got := clicko.FormatDryRunStatement(
+			"INSERT INTO users (id, name) VALUES (?, ?)",
+			[]any{1, "alice"},
+		)
+		assert.Equal(t, "INSERT INTO users (id, name) VALUES (?, ?)\n-- args: [1 alice]", got)
+	})
 }
